@@ -1,185 +1,168 @@
-<p align="center">
+# homebridge-roomba-pro
 
-<img src="https://github.com/homebridge/branding/raw/latest/logos/homebridge-wordmark-logo-vertical.png" width="150">
+[![npm version](https://img.shields.io/npm/v/homebridge-roomba-pro.svg)](https://www.npmjs.com/package/homebridge-roomba-pro)
+[![npm downloads](https://img.shields.io/npm/dt/homebridge-roomba-pro.svg)](https://www.npmjs.com/package/homebridge-roomba-pro)
+[![Homebridge](https://img.shields.io/badge/Homebridge-Plugin-purple.svg)](https://homebridge.io)
 
-</p>
+Modern iRobot Roomba support for Homebridge and Apple HomeKit.
 
-<span align="center">
+**homebridge-roomba-pro** brings newer iRobot Roomba models into Apple HomeKit, including robots using iRobot's newer V4 cloud platform.
 
-# Homebridge Platform Plugin Template
+Control your Roomba directly from the Apple Home app and use it in HomeKit scenes and automations.
 
-</span>
+## Features
 
-This is a template Homebridge dynamic platform plugin and can be used as a base to help you get started developing your own plugin.
+- 🧹 Start and stop cleaning from Apple Home
+- 🏠 Send the Roomba home to its dock
+- 🔋 Live battery level
+- ⚡ Charging status
+- 🅿️ Docked status
+- 🧭 Live robot state updates
+- 📡 iRobot V4 cloud / AWS IoT MQTT communication
+- 🚪 Room-specific cleaning controls
+- 🏡 HomeKit scenes and automations
+- 🔄 Automatic state synchronization with the robot
 
-This template should be used in conjunction with the [developer documentation](https://developers.homebridge.io/). A full list of all supported service types, and their characteristics is available on this site.
+## Why Roomba Pro?
 
-### Clone As Template
+Many existing Homebridge Roomba plugins were designed around older generations of
+iRobot's local communication protocol.
 
-Click the link below to create a new GitHub Repository using this template, or click the *Use This Template* button above.
+Newer Roomba models use iRobot's cloud infrastructure and AWS IoT MQTT for
+communication.
 
-<span align="center">
+**homebridge-roomba-pro** is designed specifically to support these newer robots
+while presenting them as native accessories inside Apple Home.
 
-### [Create New Repository From Template](https://github.com/homebridge/homebridge-plugin-template/generate)
+## HomeKit Controls
 
-</span>
+Depending on the capabilities reported by your Roomba, HomeKit can expose:
 
-### Setup Development Environment
+| Control | Function |
+|---|---|
+| Cleaning | Start or stop a cleaning job |
+| Dock | Send the Roomba back to its dock |
+| Battery | Current battery percentage |
+| Charging | Shows when the robot is charging |
+| Docked | Shows when the robot is on its dock |
+| Rooms | Start cleaning of an individual room |
 
-To develop Homebridge plugins you must have Node.js 22 or later installed, and a modern code editor such as [VS Code](https://code.visualstudio.com/). This plugin template uses [TypeScript](https://www.typescriptlang.org/) to make development easier and comes with pre-configured settings for [VS Code](https://code.visualstudio.com/) and ESLint. If you are using VS Code install these extensions:
+Room controls allow commands such as:
 
-- [ESLint](https://marketplace.visualstudio.com/items?itemName=dbaeumer.vscode-eslint)
+**Kitchen → ON**
 
-### Install Development Dependencies
+to start a cleaning job targeted specifically at the Kitchen.
 
-Using a terminal, navigate to the project folder and run this command to install the development dependencies:
+## Requirements
 
-```shell
-npm install
-```
+- Homebridge
+- Node.js supported by your Homebridge installation
+- An iRobot account
+- A compatible Roomba
+- Internet access for iRobot cloud communication
+- Apple Home / HomeKit
 
-### Update package.json
+## Installation
 
-Open the [`package.json`](./package.json) and change the following attributes:
+Install through the Homebridge UI by searching for:
 
-- `name` - this should be prefixed with `homebridge-` or `@username/homebridge-`, is case-sensitive, and contains no spaces nor special characters apart from a dash `-`
-- `displayName` - this is the "nice" name displayed in the Homebridge UI
-- `homepage` - link to your GitHub repo's `README.md`
-- `repository.url` - link to your GitHub repo
-- `bugs.url` - link to your GitHub repo issues page
-- `keywords` - the template ships with `homebridge-plugin` (required) and `supports-hap` (the plugin publishes accessories over HAP, which template-based plugins do). Add `supports-matter` if your plugin also registers Matter accessories itself — see the [Matter Plugins](https://github.com/homebridge/homebridge/wiki/Matter-Plugins) wiki page
+**Roomba Pro**
 
-When you are ready to publish the plugin you should set `private` to false, or remove the attribute entirely.
+or install from the command line:
 
-### Update Plugin Defaults
+    npm install -g homebridge-roomba-pro
 
-Open the [`src/settings.ts`](./src/settings.ts) file and change the default values:
+Then restart Homebridge.
 
-- `PLATFORM_NAME` - Set this to be the name of your platform. This is the name of the platform that users will use to register the plugin in the Homebridge `config.json`.
-- `PLUGIN_NAME` - Set this to be the same name you set in the [`package.json`](./package.json) file.
+## Configuration
 
-Open the [`config.schema.json`](./config.schema.json) file and change the following attribute:
+Open:
 
-- `pluginAlias` - set this to match the `PLATFORM_NAME` you defined in the previous step.
+**Homebridge → Plugins → Roomba Pro → Settings**
 
-See the [Homebridge API docs](https://developers.homebridge.io/#/config-screen/schema#default-values) for more details on the other attributes you can set in the `config.schema.json` file.
+Enter your iRobot account credentials and save the configuration.
 
-### Build Plugin
+Restart Homebridge after making configuration changes.
 
-TypeScript needs to be compiled into JavaScript before it can run. The following command will compile the contents of your [`src`](./src) directory and put the resulting code into the `dist` folder.
+## How It Works
 
-```shell
-npm run build
-```
+Roomba Pro connects to iRobot's cloud service and establishes a live MQTT
+connection to the robot through AWS IoT.
 
-### Link To Homebridge
+Robot state messages are translated into HomeKit characteristics so changes such
+as cleaning, docking, charging and battery level are reflected automatically in
+Apple Home.
 
-Run this command so your global installation of Homebridge can discover the plugin in your development environment:
+Commands sent from Apple Home are translated back into the appropriate iRobot
+commands.
 
-```shell
-npm link
-```
+## Room Cleaning
 
-You can now start Homebridge, use the `-D` flag, so you can see debug log messages in your plugin:
+Compatible robots can expose their mapped rooms as individual HomeKit controls.
 
-```shell
-homebridge -D
-```
+For example:
 
-### Watch For Changes and Build Automatically
+- Kitchen
+- Living Room
+- Dining Room
+- Hallway
+- Bedroom
 
-If you want to have your code compile automatically as you make changes, and restart Homebridge automatically between changes, you first need to add your plugin as a platform in `./test/hbConfig/config.json`:
-```
-{
-...
-    "platforms": [
-        {
-            "name": "Config",
-            "port": 8581,
-            "platform": "config"
-        },
-        {
-            "name": "<PLUGIN_NAME>",
-            //... any other options, as listed in config.schema.json ...
-            "platform": "<PLATFORM_NAME>"
-        }
-    ]
-}
-```
+Turning on a room accessory tells the Roomba to clean that specific room.
 
-and then you can run:
+Room availability depends on the maps and room information available from the
+robot.
 
-```shell
-npm run watch
-```
+## Troubleshooting
 
-This will launch an instance of Homebridge in debug mode which will restart every time you make a change to the source code. It will load the config stored in the default location under `~/.homebridge`. You may need to stop other running instances of Homebridge while using this command to prevent conflicts. You can adjust the Homebridge startup command in the [`nodemon.json`](./nodemon.json) file.
+If the robot does not respond, first check the Homebridge log.
 
-### Customise Plugin
+Useful Roomba Pro log entries include connection, authentication, MQTT,
+command and robot-state information.
 
-You can now start customising the plugin template to suit your requirements.
+When reporting a problem, please include:
 
-- [`src/platform.ts`](./src/platform.ts) - this is where your device setup and discovery should go.
-- [`src/platformAccessory.ts`](./src/platformAccessory.ts) - this is where your accessory control logic should go, you can rename or create multiple instances of this file for each accessory type you need to implement as part of your platform plugin. You can refer to the [developer documentation](https://developers.homebridge.io/) to see what characteristics you need to implement for each service type.
-- [`config.schema.json`](./config.schema.json) - update the config schema to match the config you expect from the user. See the [Plugin Config Schema Documentation](https://developers.homebridge.io/#/config-screen/schema).
+1. Roomba model
+2. Homebridge version
+3. Node.js version
+4. Roomba Pro version
+5. Relevant Homebridge log entries
 
-### Versioning Your Plugin
+**Do not post passwords, authentication tokens or other iRobot credentials.**
 
-Given a version number `MAJOR`.`MINOR`.`PATCH`, such as `1.4.3`, increment the:
+## Supported Robots
 
-1. **MAJOR** version when you make breaking changes to your plugin,
-2. **MINOR** version when you add functionality in a backwards compatible manner, and
-3. **PATCH** version when you make backwards compatible bug fixes.
+Roomba Pro is primarily being developed for newer iRobot robots using the
+current iRobot cloud/V4 architecture.
 
-You can use the `npm version` command to help you with this:
+Additional models will be documented as they are tested and confirmed.
 
-```shell
-# major update / breaking changes
-npm version major
+If your model works, please consider reporting it so it can be added to the
+compatibility list.
 
-# minor update / new features
-npm version update
+## Development Status
 
-# patch / bugfixes
-npm version patch
-```
+Roomba Pro is under active development.
 
-### Publish Package
+Support for additional Roomba capabilities and models will continue to be added
+as they are tested.
 
-When you are ready to publish your plugin to [npm](https://www.npmjs.com/), make sure you have removed the `private` attribute from the [`package.json`](./package.json) file then run:
+## Issues and Contributions
 
-```shell
-npm publish
-```
+Bug reports, testing results and contributions are welcome.
 
-If you are publishing a scoped plugin, i.e. `@username/homebridge-xxx` you will need to add `--access=public` to command the first time you publish.
+When opening an issue, include the Roomba model and relevant Homebridge logs
+whenever possible.
 
-#### Publishing Beta Versions
+## Disclaimer
 
-You can publish *beta* versions of your plugin for other users to test before you release it to everyone.
+This project is an independent Homebridge plugin and is not affiliated with,
+endorsed by, or sponsored by iRobot Corporation or Apple Inc.
 
-```shell
-# create a new pre-release version (eg. 2.1.0-beta.1)
-npm version prepatch --preid beta
+Roomba and iRobot are trademarks of iRobot Corporation.
 
-# publish to @beta
-npm publish --tag beta
-```
+Apple, HomeKit and Apple Home are trademarks of Apple Inc.
 
-Users can then install the  *beta* version by appending `@beta` to the install command, for example:
+## License
 
-```shell
-sudo npm install -g homebridge-example-plugin@beta
-```
-
-### Best Practices
-
-Consider creating your plugin with the [Homebridge Verified](https://github.com/homebridge/plugins) criteria in mind. This will help you to create a plugin that is easy to use and works well with Homebridge.
-You can then submit your plugin to the Homebridge Verified list for review.
-The most up-to-date criteria can be found on the [Verified Plugins](https://github.com/homebridge/plugins/wiki/Verified-Plugins) wiki page.
-
-### Useful Links
-
-Note these links are here for help but are not supported/verified by the Homebridge team
-
-- [Custom Characteristics](https://github.com/homebridge/homebridge-plugin-template/issues/20)
+MIT
