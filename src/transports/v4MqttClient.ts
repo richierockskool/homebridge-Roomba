@@ -101,7 +101,47 @@ export class V4MqttClient {
       );
 
     this.client = client;
+  
+    client.on(
+      'connectionSuccess',
+      () => {
 
+        const wasConnected =
+      this.connected;
+
+        this.connected = true;
+
+        if (wasConnected) {
+          this.log.info(
+            'Roomba AWS IoT MQTT connection restored.',
+          );
+        }
+      },
+    );
+
+    client.on(
+      'disconnection',
+      () => {
+
+        this.connected = false;
+
+        this.log.warn(
+          'Roomba AWS IoT MQTT connection lost.',
+        );
+      },
+    );
+
+    client.on(
+      'stopped',
+      () => {
+
+        this.connected = false;
+
+        this.log.info(
+          'Roomba AWS IoT MQTT client stopped.',
+        );
+      },
+    );
     client.on(
       'messageReceived',
       (eventData: mqtt5.MessageReceivedEvent) => {
@@ -155,7 +195,6 @@ export class V4MqttClient {
 
               clearTimeout(timeout);
 
-              this.connected = true;
 
               this.log.info(
                 'Connected to iRobot AWS IoT.',
@@ -197,8 +236,7 @@ export class V4MqttClient {
     command: string,
   ): Promise<void> {
 
-    const client =
-    this.requireClient();
+    
 
     const topic =
     `${this.session.deployment.irbtTopics}` +
@@ -214,7 +252,7 @@ export class V4MqttClient {
       'localApp',
     };
 
-    await client.publish({
+    await this.publish({
       topicName: topic,
 
       qos:
@@ -244,8 +282,7 @@ export class V4MqttClient {
     roomId: string,
   ): Promise<void> {
 
-    const client =
-    this.requireClient();
+    
 
     const topic =
     `${this.session.deployment.irbtTopics}` +
@@ -277,7 +314,7 @@ export class V4MqttClient {
       ],
     };
 
-    await client.publish({
+    await this.publish({
       topicName:
       topic,
 
@@ -333,7 +370,7 @@ export class V4MqttClient {
    * AWS IoT device shadows.
    */
   private async subscribeToRobotState():
-  Promise<void> {
+Promise<void> {
 
     const client =
     this.requireClient();
@@ -381,15 +418,15 @@ export class V4MqttClient {
       try {
 
         const result =
-        await client.subscribe({
-          subscriptions: [
-            {
-              topicFilter,
-              qos:
+  await client.subscribe({
+    subscriptions: [
+      {
+        topicFilter,
+        qos:
                 mqtt5.QoS.AtLeastOnce,
-            },
-          ],
-        });
+      },
+    ],
+  });
 
         const reasonCode =
         result.reasonCodes[0];
@@ -439,8 +476,7 @@ export class V4MqttClient {
   private async requestShadow():
     Promise<void> {
 
-    const client =
-      this.requireClient();
+   
 
     const blid =
       this.robot.blid;
@@ -458,7 +494,7 @@ export class V4MqttClient {
 
     for (const topic of topics) {
 
-      await client.publish({
+      await this.publish({
         topicName: topic,
 
         qos:
@@ -476,7 +512,51 @@ export class V4MqttClient {
       'Requested current Roomba V4 state.',
     );
   }
+  private async publish(
+    packet: mqtt5.PublishPacket,
+  ): Promise<void> {
 
+    const client =
+    this.requireClient();
+
+    const publishPromise =
+    client.publish(
+      packet,
+    );
+
+    const timeoutPromise =
+    new Promise<never>(
+      (_, reject) => {
+
+        const timeout =
+          setTimeout(
+            () => {
+
+              this.connected =
+                false;
+
+              reject(
+                new Error(
+                  'Timed out publishing to iRobot AWS IoT.',
+                ),
+              );
+            },
+            10_000,
+          );
+
+        void publishPromise.finally(
+          () => {
+            clearTimeout(timeout);
+          },
+        );
+      },
+    );
+
+    await Promise.race([
+      publishPromise,
+      timeoutPromise,
+    ]);
+  }
   private requireClient():
     mqtt5.Mqtt5Client {
 
