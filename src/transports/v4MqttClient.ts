@@ -158,9 +158,7 @@ export class V4MqttClient {
           `Roomba MQTT message received: ${topic}`,
         );
 
-        this.log.info(
-          `Roomba V4 RAW STATE [${topic}]: ${payload}`,
-        );
+        
 
         for (const listener of this.listeners) {
           listener({
