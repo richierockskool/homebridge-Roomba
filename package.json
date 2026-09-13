@@ -2,7 +2,7 @@
   "name": "homebridge-roomba-pro",
   "displayName": "Roomba Pro",
   "type": "module",
-  "version": "0.1.1",
+  "version": "0.1.2",
   "description": "A reliable Homebridge plugin for controlling supported iRobot Roomba robot vacuums in Apple Home.",
   "author": "Jagger Hannah",
   "license": "Apache-2.0",
