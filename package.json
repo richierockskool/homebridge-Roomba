@@ -6,13 +6,13 @@
   "description": "A reliable Homebridge plugin for controlling supported iRobot Roomba robot vacuums in Apple Home.",
   "author": "Jagger Hannah",
   "license": "Apache-2.0",
-  "homepage": "https://github.com/richierockskool/Roomba#readme",
+  "homepage": "https://github.com/richierockskool/homebridge-Roomba#readme",
   "repository": {
     "type": "git",
-    "url": "https://github.com/richierockskool/Roomba.git"
+    "url": "https://github.com/richierockskool/homebridge-Roomba.git"
   },
   "bugs": {
-    "url": "https://github.com/richierockskool/Roomba/issues"
+    "url": "https://github.com/richierockskool/homebridge-Roomba/issues"
   },
   "keywords": [
     "homebridge-plugin",
@@ -40,7 +40,6 @@
     "@smithy/protocol-http": "^5.6.2",
     "@smithy/signature-v4": "^5.7.3",
     "aws-iot-device-sdk-v2": "^1.28.0",
-    "dorita980": "^4.0.0",
     "homebridge-lib": "^8.1.4"
   },
   "devDependencies": {
