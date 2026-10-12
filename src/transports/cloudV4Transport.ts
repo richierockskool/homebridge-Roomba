@@ -49,8 +49,9 @@ export class CloudV4Transport implements RoombaTransport {
   private reconnectPromise?: Promise<void>;
 
   constructor(
-    private readonly log: Logging,
-    credentials: V4Credentials,
+  private readonly log: Logging,
+  credentials: V4Credentials,
+  private readonly robotBlid?: string,
   ) {
 
     this.authentication =
@@ -78,15 +79,19 @@ export class CloudV4Transport implements RoombaTransport {
     const session =
       await this.authentication.authenticate();
 
-    const robot =
-      session.robots[0];
+    const robot = this.robotBlid
+      ? session.robots.find(
+        candidate => candidate.blid === this.robotBlid,
+      )
+      : session.robots[0];
 
     if (!robot) {
       throw new Error(
-        'No supported Roomba was returned by the iRobot account.',
+        this.robotBlid
+          ? `Configured Roomba ${this.robotBlid} was not found in the iRobot account.`
+          : 'No supported Roomba was returned by the iRobot account.',
       );
     }
-
     this.session =
       session;
 
@@ -620,12 +625,17 @@ Partial<RoombaTransportState> = {};
     const session =
     await this.authentication.authenticate();
 
-    const robot =
-    session.robots[0];
+    const robot = this.robotBlid
+      ? session.robots.find(
+        candidate => candidate.blid === this.robotBlid,
+      )
+      : session.robots[0];
 
     if (!robot) {
       throw new Error(
-        'No supported Roomba was returned during V4 reconnect.',
+        this.robotBlid
+          ? `Configured Roomba ${this.robotBlid} was not found during V4 reconnect.`
+          : 'No supported Roomba was returned during V4 reconnect.',
       );
     }
 
