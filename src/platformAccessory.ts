@@ -286,6 +286,36 @@ export class RoombaAccessory {
         `Roomba HomeKit room registered: ${room.name} [${room.id}]`,
       );
     }
+
+    /**
+     * Remove obsolete room switches that are no longer
+     * present in the robot's current Smart Map.
+     *
+     * Preserve all current room subtypes and leave
+     * Cleaning, Dock and Battery services untouched.
+     */
+    const validRoomSubtypes = new Set(
+      rooms.map((room) => `roomba-room-${room.id}`),
+    );
+
+    for (const service of [...this.accessory.services]) {
+
+      const subtype = service.subtype;
+
+      if (
+        service.UUID !== this.platform.Service.Switch.UUID ||
+        !subtype?.startsWith('roomba-room-') ||
+        validRoomSubtypes.has(subtype)
+      ) {
+        continue;
+      }
+
+      this.platform.log.info(
+        `Removing obsolete Roomba room service: ${service.displayName}`,
+      );
+
+      this.accessory.removeService(service);
+    }
   }
 
   /**
