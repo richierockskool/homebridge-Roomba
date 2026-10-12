@@ -363,10 +363,11 @@ export class RoombaAccessory {
       return;
     }
 
-    this.activeRoomId =
-    undefined;
+    this.platform.log.debug(
+      `Room switch OFF ignored: ${roomName} [${roomId}]`,
+    );
 
-    await this.controller.stopCleaning();
+    return;
   }
   private handleStateUpdate(
     state: RoombaState,
