@@ -75,22 +75,25 @@ export class RoombaPlatform implements DynamicPlatformPlugin {
    * For our first development stage we create one deterministic accessory.
    * Later this method will be replaced by real robot discovery.
    */
+  /**
+   * Discover and register each Roomba independently.
+   */
   private async discoverRoombas(): Promise<void> {
 
     const email =
-    typeof this.config.email === 'string'
-      ? this.config.email.trim()
-      : '';
+      typeof this.config.email === 'string'
+        ? this.config.email.trim()
+        : '';
 
     const password =
-    typeof this.config.password === 'string'
-      ? this.config.password
-      : '';
+      typeof this.config.password === 'string'
+        ? this.config.password
+        : '';
 
     const countryCode =
-    typeof this.config.countryCode === 'string'
-      ? this.config.countryCode
-      : 'CA';
+      typeof this.config.countryCode === 'string'
+        ? this.config.countryCode
+        : 'CA';
 
     const authentication = new V4Authentication(
       this.log,
@@ -103,87 +106,76 @@ export class RoombaPlatform implements DynamicPlatformPlugin {
 
     const session = await authentication.authenticate();
 
-    this.log.info(
-      `Preparing ${session.robots.length} Roomba accessory(s).`,
-    );
-
-    for (const robot of session.robots) {
-      this.log.info(
-        `Roomba accessory candidate: ${robot.name} (${robot.sku})`,
-      );
-    }
-
-  // Accessory registration will follow in the next patch.
-  }
-  private setupRoombaAccessory() {
-
-    const accessoryName =
-      typeof this.config.name === 'string' &&
-      this.config.name.trim().length > 0
-        ? this.config.name.trim()
-        : 'Roomba';
-
-    const uuid = this.api.hap.uuid.generate(
-      'homebridge-roomba-pro-primary',
-    );
-
-    const existingAccessory =
-      this.accessories.get(uuid);
-
-    if (existingAccessory) {
-
-      this.log.info(
-        'Restoring Roomba:',
-        existingAccessory.displayName,
-      );
-
-      existingAccessory.context.device = {
-        id: 'primary',
-        name: accessoryName,
-      };
-
-      this.api.updatePlatformAccessories([
-        existingAccessory,
-      ]);
-
-      new RoombaAccessory(
-        this,
-        existingAccessory,
-      );
-
+    if (session.robots.length === 0) {
+      this.log.warn('No Roomba robots discovered.');
       return;
     }
 
-    this.log.info(
-      'Adding Roomba accessory:',
-      accessoryName,
-    );
+    for (const robot of session.robots) {
 
-    const accessory =
-      new this.api.platformAccessory(
-        accessoryName,
-        uuid,
+      const isLittleBob =
+        robot.blid ===
+        '20F7790E082EFE7D6485D55ADCCC0AE8';
+
+      const uuid = isLittleBob
+        ? this.api.hap.uuid.generate(
+          'homebridge-roomba-pro-primary',
+        )
+        : this.api.hap.uuid.generate(
+          `homebridge-roomba-pro-${robot.blid}`,
+        );
+
+      const accessoryName = robot.name;
+
+      let accessory = this.accessories.get(uuid);
+
+      if (accessory) {
+
+        this.log.info(
+          `Restoring Roomba: ${accessoryName} (${robot.sku})`,
+        );
+
+        accessory.context.device = {
+          id: robot.blid,
+          name: accessoryName,
+          sku: robot.sku,
+        };
+
+        this.api.updatePlatformAccessories([
+          accessory,
+        ]);
+
+      } else {
+
+        this.log.info(
+          `Adding Roomba: ${accessoryName} (${robot.sku})`,
+        );
+
+        accessory = new this.api.platformAccessory(
+          accessoryName,
+          uuid,
+        );
+
+        accessory.context.device = {
+          id: robot.blid,
+          name: accessoryName,
+          sku: robot.sku,
+        };
+
+        this.api.registerPlatformAccessories(
+          PLUGIN_NAME,
+          PLATFORM_NAME,
+          [accessory],
+        );
+
+        this.accessories.set(uuid, accessory);
+      }
+
+      new RoombaAccessory(
+        this,
+        accessory,
+        robot.blid,
       );
-
-    accessory.context.device = {
-      id: 'primary',
-      name: accessoryName,
-    };
-
-    new RoombaAccessory(
-      this,
-      accessory,
-    );
-
-    this.api.registerPlatformAccessories(
-      PLUGIN_NAME,
-      PLATFORM_NAME,
-      [accessory],
-    );
-
-    this.accessories.set(
-      accessory.UUID,
-      accessory,
-    );
+    }
   }
 }
