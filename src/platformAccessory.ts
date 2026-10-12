@@ -316,7 +316,17 @@ export class RoombaAccessory {
 
       this.accessory.removeService(service);
     }
+
+    // Save the updated room services to Homebridge.
+    this.platform.api.updatePlatformAccessories([
+      this.accessory,
+    ]);
+
+    this.platform.log.info(
+      'Roomba Smart Map room services saved to Homebridge.',
+    );
   }
+  
 
   /**
  * Generic mapped-room switch handler.
