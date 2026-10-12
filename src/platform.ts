@@ -105,6 +105,11 @@ export class RoombaPlatform implements DynamicPlatformPlugin {
     );
 
     const session = await authentication.authenticate();
+    
+
+    this.log.info(
+      `iRobot MQTT client ID obtained: ${session.iotClientId}`,
+    );
 
     if (session.robots.length === 0) {
       this.log.warn('No Roomba robots discovered.');

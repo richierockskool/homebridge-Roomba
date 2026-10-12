@@ -78,6 +78,7 @@ export class V4MqttClient {
           this.session.deployment.mqttAts,
           customAuthConfig,
         );
+    
 
     builder.withConnectProperties({
       clientId:
