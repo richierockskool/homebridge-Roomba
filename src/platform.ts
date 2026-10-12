@@ -10,6 +10,9 @@ import type {
 
 import { RoombaAccessory } from './platformAccessory.js';
 import { PLATFORM_NAME, PLUGIN_NAME } from './settings.js';
+import {
+  V4Authentication,
+} from './transports/v4Authentication.js';
 
 /**
  * RoombaPlatform
@@ -38,10 +41,19 @@ export class RoombaPlatform implements DynamicPlatformPlugin {
 
     this.api.on('didFinishLaunching', () => {
       this.log.info('Homebridge finished launching.');
-      this.setupRoombaAccessory();
+
+      void this.discoverRoombas().catch(error => {
+        const message =
+      error instanceof Error
+        ? error.message
+        : String(error);
+
+        this.log.error(
+          `Roomba discovery failed: ${message}`,
+        );
+      });
     });
   }
-
   /**
    * Called by Homebridge when restoring an accessory from cache.
    */
@@ -63,6 +75,46 @@ export class RoombaPlatform implements DynamicPlatformPlugin {
    * For our first development stage we create one deterministic accessory.
    * Later this method will be replaced by real robot discovery.
    */
+  private async discoverRoombas(): Promise<void> {
+
+    const email =
+    typeof this.config.email === 'string'
+      ? this.config.email.trim()
+      : '';
+
+    const password =
+    typeof this.config.password === 'string'
+      ? this.config.password
+      : '';
+
+    const countryCode =
+    typeof this.config.countryCode === 'string'
+      ? this.config.countryCode
+      : 'CA';
+
+    const authentication = new V4Authentication(
+      this.log,
+      {
+        email,
+        password,
+        countryCode,
+      },
+    );
+
+    const session = await authentication.authenticate();
+
+    this.log.info(
+      `Preparing ${session.robots.length} Roomba accessory(s).`,
+    );
+
+    for (const robot of session.robots) {
+      this.log.info(
+        `Roomba accessory candidate: ${robot.name} (${robot.sku})`,
+      );
+    }
+
+  // Accessory registration will follow in the next patch.
+  }
   private setupRoombaAccessory() {
 
     const accessoryName =

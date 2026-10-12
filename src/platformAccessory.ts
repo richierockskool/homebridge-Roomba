@@ -27,14 +27,16 @@ export class RoombaAccessory {
   private activeRoomId?: string;
 
   constructor(
-    private readonly platform: RoombaPlatform,
-    private readonly accessory: PlatformAccessory,
+  private readonly platform: RoombaPlatform,
+  private readonly accessory: PlatformAccessory,
+  private readonly robotBlid: string,
   ) {
 
     this.controller =
   new RoombaController(
     this.platform.log,
     this.platform.config,
+    this.robotBlid,
   );
 
     /**
@@ -129,8 +131,8 @@ export class RoombaAccessory {
     );
 
     this.platform.log.info(
-      'Roomba accessory ready:',
-      this.accessory.displayName,
+      `Roomba accessory ready: ${this.accessory.displayName}`,
+      `Robot ID: ${this.robotBlid}`,
     );
     void this.controller
       .connect()

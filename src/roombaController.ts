@@ -45,8 +45,9 @@ export class RoombaController {
   private readonly transport: RoombaTransport;
 
   constructor(
-    private readonly log: Logging,
-    config: PlatformConfig,
+  private readonly log: Logging,
+  config: PlatformConfig,
+  private readonly robotBlid?: string,
   ) {
 
     const email =
@@ -65,14 +66,15 @@ export class RoombaController {
         : 'CA';
 
     this.transport =
-      new CloudV4Transport(
-        this.log,
-        {
-          email,
-          password,
-          countryCode,
-        },
-      );
+  new CloudV4Transport(
+    this.log,
+    {
+      email,
+      password,
+      countryCode,
+    },
+    this.robotBlid,
+  );
 
     this.transport.onStateChange(
       this.handleTransportState.bind(this),
