@@ -327,10 +327,20 @@ export class CloudV4Transport implements RoombaTransport {
     message: V4MqttMessage,
   ): void {
 
+    // Only process messages belonging to this robot.
+    // This is essential when multiple Roombas share MQTT.
+    if (
+      this.robotBlid &&
+    !message.topic.includes(
+      `/things/${this.robotBlid}/`,
+    )
+    ) {
+      return;
+    }
+
     this.log.debug(
       `Roomba V4 MQTT topic: ${message.topic}`,
     );
-
     if (message.payload.length === 0) {
       return;
     }

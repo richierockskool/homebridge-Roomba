@@ -233,13 +233,13 @@ export class V4MqttClient {
   }
   public async sendCommand(
     command: string,
+    robotBlid: string = this.robot.blid,
   ): Promise<void> {
-
     
 
     const topic =
-    `${this.session.deployment.irbtTopics}` +
-    `/things/${this.robot.blid}/cmd`;
+  `${this.session.deployment.irbtTopics}` +
+  `/things/${robotBlid}/cmd`;
 
     const payload = {
       command,
@@ -279,13 +279,13 @@ export class V4MqttClient {
   public async sendRoomCleaningCommand(
     p2mapId: string,
     roomId: string,
+    robotBlid: string = this.robot.blid,
   ): Promise<void> {
-
     
 
     const topic =
-    `${this.session.deployment.irbtTopics}` +
-    `/things/${this.robot.blid}/cmd`;
+  `${this.session.deployment.irbtTopics}` +
+  `/things/${robotBlid}/cmd`;
 
     const payload = {
       command:
@@ -357,9 +357,15 @@ export class V4MqttClient {
 
   public onMessage(
     listener: V4MqttMessageListener,
-  ): void {
+  ): () => void {
 
     this.listeners.add(listener);
+
+    // Allow individual transports to unregister
+    // without disconnecting the shared MQTT client.
+    return () => {
+      this.listeners.delete(listener);
+    };
   }
 
   /**
@@ -368,14 +374,13 @@ export class V4MqttClient {
    * The V4 protocol still exposes state through
    * AWS IoT device shadows.
    */
-  private async subscribeToRobotState():
-Promise<void> {
-
+  public async subscribeToRobotState(
+    robotBlid: string = this.robot.blid,
+  ): Promise<void> {
     const client =
     this.requireClient();
 
-    const blid =
-    this.robot.blid;
+    const blid = robotBlid;
 
     const topicFilters = [
       `$aws/things/${blid}/shadow/get/accepted`,
@@ -472,13 +477,13 @@ Promise<void> {
       `Roomba MQTT subscriptions ready: ${acceptedCount}/${topicFilters.length} accepted.`,
     );
   }
-  private async requestShadow():
-    Promise<void> {
+  public async requestShadow(
+    robotBlid: string = this.robot.blid,
+  ): Promise<void> {
 
    
 
-    const blid =
-      this.robot.blid;
+    const blid = robotBlid;
 
     const topics = [
       `$aws/things/${blid}/shadow/get`,
