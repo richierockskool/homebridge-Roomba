@@ -9,13 +9,15 @@ import type {
 import {
   V4Authentication,
   type V4Credentials,
-  type V4Session,
 } from './v4Authentication.js';
 
-import {
-  V4MqttClient,
-  type V4MqttMessage,
+import type {
+  V4MqttMessage,
 } from './v4MqttClient.js';
+
+import {
+  V4MqttManager,
+} from './v4MqttManager.js';
 
 import {
   V4MapClient,
@@ -41,8 +43,11 @@ export class CloudV4Transport implements RoombaTransport {
 
   private readonly authentication: V4Authentication;
 
-  private session?: V4Session;
-  private mqttClient?: V4MqttClient;
+  
+
+  private mqttManager?: V4MqttManager;
+  private acquiredRobotBlid?: string;
+  private unsubscribeMqtt?: () => void;
   private mapClient?: V4MapClient;
 
   private connected = false;
@@ -92,8 +97,7 @@ export class CloudV4Transport implements RoombaTransport {
           : 'No supported Roomba was returned by the iRobot account.',
       );
     }
-    this.session =
-      session;
+   
 
     this.log.info(
       `Cloud V4 authenticated for ${robot.name} (${robot.sku}).`,
@@ -103,12 +107,13 @@ export class CloudV4Transport implements RoombaTransport {
      * Step 2:
      * Establish the live AWS IoT MQTT connection.
      */
-    const mqttClient =
-      new V4MqttClient(
-        this.log,
-        session,
-        robot,
-      );
+    const mqttManager =
+  V4MqttManager.getInstance(
+    this.log,
+    session,
+  );
+
+    mqttManager.registerRobot(robot);
 
     this.mapClient =
   new V4MapClient(
@@ -118,25 +123,29 @@ export class CloudV4Transport implements RoombaTransport {
   );
 
     await this.mapClient.discoverRooms();
-    mqttClient.onMessage(
+
+    this.mqttManager = mqttManager;
+
+    this.unsubscribeMqtt = mqttManager.onRobotMessage(
+      robot.blid,
       this.handleMqttMessage.bind(this),
     );
 
-    this.mqttClient =
-      mqttClient;
-
     try {
 
-      await mqttClient.connect();
+      await mqttManager.acquireRobot(robot);
+      this.acquiredRobotBlid = robot.blid;
 
     } catch (error) {
 
-      this.mqttClient = undefined;
-      this.session = undefined;
+      this.mqttManager = undefined;
+
+      this.unsubscribeMqtt?.();
+      this.unsubscribeMqtt = undefined;
 
       throw error;
-    }
 
+    }
     this.connected = true;
 
     
@@ -150,20 +159,26 @@ export class CloudV4Transport implements RoombaTransport {
 
     this.connected = false;
 
-    const mqttClient =
-      this.mqttClient;
+    // Stop receiving messages for this robot.
+    this.unsubscribeMqtt?.();
+    this.unsubscribeMqtt = undefined;
 
-    this.mqttClient = undefined;
-    this.session = undefined;
+    // Release only this robot's ownership.
+    // The other robot keeps the shared connection.
+    const mqttManager = this.mqttManager;
+    this.mqttManager = undefined;
+
+    
+    
     this.mapClient = undefined;
 
-    if (mqttClient) {
-      await mqttClient.disconnect();
+    const acquiredRobotBlid = this.acquiredRobotBlid;
+    this.acquiredRobotBlid = undefined;
+
+    if (mqttManager && acquiredRobotBlid) {
+      await mqttManager.releaseRobot(acquiredRobotBlid);
     }
 
-    this.log.info(
-      'Cloud V4 transport disconnected.',
-    );
   }
 
   public async startCleaning(): Promise<void> {
@@ -178,8 +193,9 @@ export class CloudV4Transport implements RoombaTransport {
 
     if (
       !this.connected ||
-    !this.mqttClient ||
-    !this.mapClient
+  !this.mqttManager ||
+  !this.robotBlid ||
+  !this.mapClient
     ) {
       throw new Error(
         'Cloud V4 transport is not connected.',
@@ -209,9 +225,10 @@ export class CloudV4Transport implements RoombaTransport {
 
     try {
 
-      await this.mqttClient.sendRoomCleaningCommand(
-        mapInfo.p2mapId,
-        room.id,
+      await this.mqttManager!.sendRoomCleaningCommand(
+    this.robotBlid!,
+    mapInfo.p2mapId,
+    room.id,
       );
 
     } catch (error) {
@@ -225,51 +242,9 @@ export class CloudV4Transport implements RoombaTransport {
         `Roomba V4 room command failed: ${message}`,
       );
 
-      await this.reconnect();
+      throw error;
 
-      const mqttClient =
-    this.mqttClient;
-
-      const refreshedMapInfo =
-    this.mapClient?.getMapInfo();
-
-      if (
-        !mqttClient ||
-    !refreshedMapInfo
-      ) {
-        throw new Error(
-          'Roomba room command could not recover after reconnect.',
-          {
-            cause: error,
-          },
-        );
-      }
-
-      const refreshedRoom =
-    refreshedMapInfo.rooms.find(
-      candidate =>
-        candidate.id === roomId,
-    );
-
-      if (!refreshedRoom) {
-        throw new Error(
-          `Roomba room ${roomId} was not found after reconnect.`,
-          {
-            cause: error,
-          },
-        );
-      }
-
-      this.log.info(
-        `Retrying Roomba V4 room command: ${refreshedRoom.name} [${refreshedRoom.id}]`,
-      );
-
-      await mqttClient.sendRoomCleaningCommand(
-        refreshedMapInfo.p2mapId,
-        refreshedRoom.id,
-      );
     }
-
     this.log.info(
       `Roomba V4 targeted room cleaning started: ${room.name} [${room.id}]`,
     );
@@ -601,37 +576,12 @@ Partial<RoombaTransportState> = {};
   private async performReconnect(): Promise<void> {
 
     this.log.warn(
-      'Reconnecting iRobot Cloud V4 transport...',
+      'Refreshing iRobot Cloud V4 transport...',
     );
 
     this.connected = false;
 
-    const oldMqttClient =
-    this.mqttClient;
-
-    this.mqttClient =
-    undefined;
-
-    if (oldMqttClient) {
-
-      try {
-        await oldMqttClient.disconnect();
-      } catch (error) {
-
-        const message =
-        error instanceof Error
-          ? error.message
-          : String(error);
-
-        this.log.debug(
-          `Old Roomba MQTT disconnect failed during reconnect: ${message}`,
-        );
-      }
-    }
-
-    /**
-   * Obtain completely fresh iRobot/AWS credentials.
-   */
+    // Obtain fresh authentication credentials.
     const session =
     await this.authentication.authenticate();
 
@@ -643,37 +593,30 @@ Partial<RoombaTransportState> = {};
 
     if (!robot) {
       throw new Error(
-        this.robotBlid
-          ? `Configured Roomba ${this.robotBlid} was not found during V4 reconnect.`
-          : 'No supported Roomba was returned during V4 reconnect.',
+        'Configured Roomba was not found during V4 reconnect.',
       );
     }
 
-    const mqttClient =
-    new V4MqttClient(
+    // Reuse the account's existing MQTT manager.
+    // Never create a competing MQTT client.
+    const mqttManager =
+    V4MqttManager.getInstance(
       this.log,
       session,
-      robot,
     );
 
-    mqttClient.onMessage(
-      this.handleMqttMessage.bind(this),
-    );
+    // Refresh robot registration and session credentials.
+    mqttManager.registerRobot(robot);
 
-    await mqttClient.connect();
+    // The manager owns the MQTT connection.
+    // If this robot is already active, acquireRobot()
+    // will leave the existing connection untouched.
+    await mqttManager.acquireRobot(robot);
+    this.acquiredRobotBlid = robot.blid;
+  
 
-    this.session =
-    session;
-
-    this.mqttClient =
-    mqttClient;
-
-    /**
-   * Refresh the Smart Map as well because room/map
-   * information may have changed while disconnected.
-   */
-    const mapClient =
-    new V4MapClient(
+    // Refresh this robot's Smart Map independently.
+    const mapClient = new V4MapClient(
       this.log,
       session,
       robot,
@@ -681,32 +624,43 @@ Partial<RoombaTransportState> = {};
 
     await mapClient.discoverRooms();
 
-    this.mapClient =
-    mapClient;
+    // Replace any previous message listener.
+    this.unsubscribeMqtt?.();
+
+    this.unsubscribeMqtt =
+    mqttManager.onRobotMessage(
+      robot.blid,
+      this.handleMqttMessage.bind(this),
+    );
+
+    this.mqttManager = mqttManager;
+    this.mapClient = mapClient;
 
     this.connected = true;
 
     this.log.info(
-      'iRobot Cloud V4 transport reconnected successfully.',
+      `iRobot Cloud V4 transport refreshed: ${robot.name}.`,
     );
+
   }
   private async sendCommand(
     command: string,
   ): Promise<void> {
 
+    if (
+      !this.connected ||
+    !this.mqttManager ||
+    !this.robotBlid
+    ) {
+      throw new Error(
+        'Cloud V4 transport is not connected.',
+      );
+    }
+
     try {
 
-      if (
-        !this.connected ||
-      !this.session ||
-      !this.mqttClient
-      ) {
-        throw new Error(
-          'Cloud V4 transport is not connected.',
-        );
-      }
-
-      await this.mqttClient.sendCommand(
+      await this.mqttManager.sendCommand(
+        this.robotBlid,
         command,
       );
 
@@ -721,31 +675,15 @@ Partial<RoombaTransportState> = {};
         `Roomba V4 command "${command}" failed: ${message}`,
       );
 
-      await this.reconnect();
+      // Do not automatically retry.
+      // The original command may have reached the robot.
+      throw error;
 
-      const mqttClient =
-      this.mqttClient;
-
-      if (!mqttClient) {
-        throw new Error(
-          'Roomba MQTT client was unavailable after reconnect.',
-          {
-            cause: error,
-          },
-        );
-      }
-
-      this.log.info(
-        `Retrying Roomba V4 command: ${command}`,
-      );
-
-      await mqttClient.sendCommand(
-        command,
-      );
     }
 
     this.log.info(
       `Roomba V4 command sent: ${command}`,
     );
+
   }
 }

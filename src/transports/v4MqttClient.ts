@@ -30,6 +30,10 @@ export class V4MqttClient {
     new Set<V4MqttMessageListener>();
 
   private connected = false;
+  private hasConnectedBefore = false;
+
+  private readonly reconnectListeners =
+    new Set<() => void>();
 
   constructor(
     private readonly log: Logging,
@@ -107,15 +111,26 @@ export class V4MqttClient {
       'connectionSuccess',
       () => {
 
-        const wasConnected =
-      this.connected;
+        const isReconnect = this.hasConnectedBefore;
 
         this.connected = true;
+        this.hasConnectedBefore = true;
 
-        if (wasConnected) {
+        if (isReconnect) {
+
           this.log.info(
             'Roomba AWS IoT MQTT connection restored.',
           );
+
+          for (const listener of this.reconnectListeners) {
+            try {
+              listener();
+            } catch (error) {
+              this.log.error(
+                `Roomba MQTT reconnect listener failed: ${String(error)}`,
+              );
+            }
+          }
         }
       },
     );
@@ -223,13 +238,13 @@ export class V4MqttClient {
         },
       );
 
+
     client.start();
 
     await connectedPromise;
 
-    await this.subscribeToRobotState();
-
-    await this.requestShadow();
+    // Robot subscriptions and shadow requests
+    // are managed by V4MqttManager.;
   }
   public async sendCommand(
     command: string,
@@ -335,8 +350,7 @@ export class V4MqttClient {
   }
   public async disconnect(): Promise<void> {
 
-    const client =
-      this.client;
+    const client = this.client;
 
     if (!client) {
       return;
@@ -345,16 +359,52 @@ export class V4MqttClient {
     this.connected = false;
 
     try {
-      client.stop();
+
+      await new Promise<void>((resolve, reject) => {
+
+        let settled = false;
+
+        const onStopped = (): void => {
+
+          if (settled) {
+            return;
+          }
+
+          settled = true;
+    client!.removeListener('stopped', onStopped);
+    resolve();
+        };
+
+  client!.on('stopped', onStopped);
+
+  try {
+    client!.stop();
+  } catch (error) {
+
+    if (!settled) {
+      settled = true;
+      client!.removeListener('stopped', onStopped);
+
+      reject(
+        error instanceof Error
+          ? error
+          : new Error(String(error)),
+      );
+    }
+  }
+
+      });
     } finally {
+
       this.client = undefined;
+
     }
 
     this.log.info(
       'Disconnected from iRobot AWS IoT.',
     );
+    
   }
-
   public onMessage(
     listener: V4MqttMessageListener,
   ): () => void {
@@ -367,7 +417,6 @@ export class V4MqttClient {
       this.listeners.delete(listener);
     };
   }
-
   /**
    * Subscribe to classic and named-shadow traffic.
    *
@@ -476,6 +525,16 @@ export class V4MqttClient {
     this.log.info(
       `Roomba MQTT subscriptions ready: ${acceptedCount}/${topicFilters.length} accepted.`,
     );
+  }
+  public onReconnect(
+    listener: () => void,
+  ): () => void {
+
+    this.reconnectListeners.add(listener);
+
+    return () => {
+      this.reconnectListeners.delete(listener);
+    };
   }
   public async requestShadow(
     robotBlid: string = this.robot.blid,

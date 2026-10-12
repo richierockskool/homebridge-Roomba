@@ -34,6 +34,8 @@ export interface V4Session {
 
   cloudCredentials: V4CloudCredentials;
 
+  authenticatedAt: number;
+
   iotToken: string;
   iotSignature: string;
   iotAuthorizerName: string;
@@ -41,7 +43,6 @@ export interface V4Session {
 
   robots: V4Robot[];
 }
-
 interface DiscoveryResult {
   deployment: V4Deployment;
   gigyaApiKey: string;
@@ -481,6 +482,7 @@ export class V4Authentication {
     }
 
     return {
+      authenticatedAt: Date.now(),
       deployment,
       cloudCredentials: {
         accessKeyId:

@@ -19,6 +19,7 @@ import type {
  */
 export class V4MqttManager {
 
+
   private static readonly instances =
     new Map<string, V4MqttManager>();
 
@@ -29,12 +30,26 @@ export class V4MqttManager {
 
   private connectPromise?: Promise<void>; 
 
+  private disconnectPromise?: Promise<void>;
+
+  private shutdownComplete?: Promise<void>;
+
+  private finishShutdown?: () => void;
+
+  private restorePromise?: Promise<void>;
+
+  private readonly activeRobots = new Set<string>();
+
+  private readonly pendingRobots = new Set<string>();
+
+  private readonly cancelledRobots = new Set<string>();
+
   private readonly messageListeners =
     new Map<string, Set<(message: V4MqttMessage) => void>>();
 
   private constructor(
-    private readonly log: Logging,
-    private readonly session: V4Session,
+  private readonly log: Logging,
+  private session: V4Session,
   ) {
   }
 
@@ -55,35 +70,35 @@ export class V4MqttManager {
       );
 
       this.instances.set(key, manager);
+
+    } else {
+
+      manager.updateSession(session);
+
     }
 
     return manager;
   }
+  public updateSession(
+    session: V4Session,
+  ): void {
 
-  public async registerRobot(
+    if (session.iotClientId !== this.session.iotClientId) {
+      throw new Error(
+        'Cannot update MQTT manager with a different client ID.',
+      );
+    }
+
+    this.session = session;
+  }
+  public registerRobot(
     robot: V4Robot,
-  ): Promise<void> {
-
-    const alreadyRegistered =
-    this.robots.has(robot.blid);
+  ): void {
 
     this.robots.set(
       robot.blid,
       robot,
     );
-
-    // If MQTT is already connected, subscribe
-    // this robot without creating another connection.
-    if (this.mqttClient && !alreadyRegistered) {
-
-      await this.mqttClient.subscribeToRobotState(
-        robot.blid,
-      );
-
-      await this.mqttClient.requestShadow(
-        robot.blid,
-      );
-    }
   }
 
   public getRegisteredRobots(): V4Robot[] {
@@ -97,25 +112,209 @@ export class V4MqttManager {
 
     return this.robots.size;
   }
-  public async connect(): Promise<void> {
+  public async acquireRobot(
+    robot: V4Robot,
+  ): Promise<void> {
 
-    if (this.connectPromise) {
-      await this.connectPromise;
-      return;
+    // Wait until any shared MQTT shutdown completes.
+    
+    // Wait for a shutdown already in progress.
+    if (this.shutdownComplete) {
+      await this.shutdownComplete;
     }
 
-    if (this.mqttClient) {
+    // This robot already owns a connection.
+    // Do not subscribe it a second time.
+    if (this.activeRobots.has(robot.blid)) {
       return;
     }
+    // Prevent overlapping acquisitions for
+    // the same robot.
+    if (this.pendingRobots.has(robot.blid)) {
+      throw new Error(
+        'Roomba MQTT acquisition is already in progress.',
+      );
+    }
 
-    this.connectPromise = this.openConnection();
+    this.pendingRobots.add(robot.blid);
+
+    // Your existing try block continues here.
 
     try {
-      await this.connectPromise;
+
+      this.registerRobot(robot);
+
+      await this.connect();
+
+      // The robot may have been released while
+      // the shared connection was being established.
+      if (this.cancelledRobots.has(robot.blid)) {
+        throw new Error(
+          'Roomba MQTT acquisition was cancelled during connection.',
+        );
+      }
+
+      const mqttClient = this.mqttClient;
+
+      if (!mqttClient) {
+        throw new Error(
+          'Shared Roomba MQTT connection is unavailable.',
+        );
+      }
+
+      await mqttClient.subscribeToRobotState(
+        robot.blid,
+      );
+
+      await mqttClient.requestShadow(
+        robot.blid,
+      );
+
+      
+      // Never complete an acquisition that was cancelled.
+      if (this.cancelledRobots.has(robot.blid)) {
+        throw new Error(
+          'Roomba MQTT acquisition was cancelled during startup.',
+        );
+      }
+
+      this.activeRobots.add(robot.blid);
+
     } finally {
-      this.connectPromise = undefined;
+
+      const wasCancelled =
+    this.cancelledRobots.has(robot.blid);
+
+      const becameActive =
+    this.activeRobots.has(robot.blid);
+
+      this.pendingRobots.delete(robot.blid);
+
+      this.cancelledRobots.delete(robot.blid);
+
+      // Clean up a cancelled or failed acquisition.
+      // Never close MQTT while another robot needs it.
+      if (wasCancelled || !becameActive) {
+        await this.releaseRobot(robot.blid);
+      }
     }
-    
+  }
+
+  public async releaseRobot(
+    robotBlid: string,
+  ): Promise<void> {
+
+    // Another shutdown is already underway.
+    // Let it finish rather than starting a second one.
+    // Wait for any existing shutdown to finish
+    // before processing this robot's release.
+    // Record this robot's release immediately.
+    if (this.pendingRobots.has(robotBlid)) {
+      this.cancelledRobots.add(robotBlid);
+    }
+
+    this.activeRobots.delete(robotBlid);
+
+    // Finish any shutdown already underway.
+    if (this.shutdownComplete) {
+      await this.shutdownComplete;
+    }
+
+    if (this.connectPromise) {
+      try {
+        await this.connectPromise;
+      } catch {
+        // Connection failure is handled by connect().
+      }
+    }
+
+    // Another release may have started shutdown
+    // while we were waiting for the connection.
+    if (this.shutdownComplete) {
+      await this.shutdownComplete;
+      return;
+    }
+
+    // Keep MQTT running while another robot
+    // is active or still connecting.
+    if (
+      this.activeRobots.size > 0 ||
+  this.pendingRobots.size > 0
+    ) {
+      return;
+    }
+   
+   
+
+    this.shutdownComplete = new Promise<void>((resolve) => {
+      this.finishShutdown = resolve;
+    });
+
+    try {
+      const mqttClient = this.mqttClient;
+
+      this.mqttClient = undefined;
+
+      if (mqttClient) {
+        const disconnectPromise = mqttClient.disconnect();
+
+        this.disconnectPromise = disconnectPromise;
+
+        try {
+          await disconnectPromise;
+        } finally {
+          if (this.disconnectPromise === disconnectPromise) {
+            this.disconnectPromise = undefined;
+          }
+        }
+      }
+    } finally {
+      
+
+      this.finishShutdown?.();
+      this.finishShutdown = undefined;
+      this.shutdownComplete = undefined;
+    }
+  }
+  public connect(): Promise<void> {
+
+    if (this.connectPromise) {
+      return this.connectPromise;
+    }
+
+    if (this.mqttClient && !this.shutdownComplete) {
+      return Promise.resolve();
+    }
+
+    const connection = (async (): Promise<void> => {
+
+      if (this.shutdownComplete) {
+        await this.shutdownComplete;
+      }
+
+      if (this.disconnectPromise) {
+        await this.disconnectPromise;
+      }
+
+      if (this.mqttClient) {
+        return;
+      }
+
+      await this.openConnection();
+
+    })();
+
+    this.connectPromise = connection;
+
+    void connection.finally(() => {
+      if (this.connectPromise === connection) {
+        this.connectPromise = undefined;
+      }
+    }).catch(() => {
+    // The original connection promise carries the error.
+    });
+
+    return connection;
   }
   public onRobotMessage(
     robotBlid: string,
@@ -139,6 +338,53 @@ export class V4MqttManager {
       }
     };
   }
+  public async sendCommand(
+    robotBlid: string,
+    command: string,
+  ): Promise<void> {
+
+    if (!this.activeRobots.has(robotBlid)) {
+      throw new Error(
+        'Roomba does not have an active MQTT connection',
+      );
+    }
+
+    if (!this.mqttClient) {
+      throw new Error(
+        'Shared Roomba MQTT connection is unavailable.',
+      );
+    }
+
+    await this.mqttClient.sendCommand(
+      command,
+      robotBlid,
+    );
+  }
+
+  public async sendRoomCleaningCommand(
+    robotBlid: string,
+    p2mapId: string,
+    roomId: string,
+  ): Promise<void> {
+
+    if (!this.activeRobots.has(robotBlid)) {
+      throw new Error(
+        'Roomba does not have an active MQTT connection.',
+      );
+    }
+
+    if (!this.mqttClient) {
+      throw new Error(
+        'Shared Roomba MQTT connection is unavailable.',
+      );
+    }
+
+    await this.mqttClient.sendRoomCleaningCommand(
+      p2mapId,
+      roomId,
+      robotBlid,
+    );
+  }
   private async openConnection(): Promise<void> {
 
     const robot = this.getRegisteredRobots()[0];
@@ -154,6 +400,31 @@ export class V4MqttManager {
       this.session,
       robot,
     );
+    // Restore subscriptions for every active robot
+    // whenever AWS IoT reconnects.
+    mqttClient.onReconnect(() => {
+
+      if (this.restorePromise) {
+        return;
+      }
+
+      const restoration =
+    this.restoreSubscriptions(mqttClient);
+
+      this.restorePromise = restoration;
+
+      void restoration
+        .catch((error) => {
+          this.log.error(
+            `Roomba MQTT subscription restoration failed: ${String(error)}`,
+          );
+        })
+        .finally(() => {
+          if (this.restorePromise === restoration) {
+            this.restorePromise = undefined;
+          }
+        });
+    });
     mqttClient.onMessage((message) => {
 
       for (const [robotBlid, listeners] of this.messageListeners) {
@@ -174,6 +445,21 @@ export class V4MqttManager {
     } catch (error) {
       await mqttClient.disconnect();
       throw error;
+    }
+  }
+  private async restoreSubscriptions(
+    mqttClient: V4MqttClient,
+  ): Promise<void> {
+
+    for (const robotBlid of this.activeRobots) {
+
+      await mqttClient.subscribeToRobotState(
+        robotBlid,
+      );
+
+      await mqttClient.requestShadow(
+        robotBlid,
+      );
     }
   }
 }
