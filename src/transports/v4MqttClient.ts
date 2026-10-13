@@ -30,6 +30,55 @@ export class V4MqttClient {
     new Set<V4MqttMessageListener>();
 
   private connected = false;
+  public isConnected(): boolean {
+    return this.connected;
+  }
+  public async waitForConnection(
+    timeoutMs = 15_000,
+  ): Promise<void> {
+
+    if (this.connected) {
+      return;
+    }
+
+    await new Promise<void>((resolve, reject) => {
+
+      const client = this.client;
+
+      if (!client) {
+        reject(new Error('Roomba MQTT client is unavailable.'));
+        return;
+      }
+
+      const onConnected = (): void => {
+        resolve();
+      };
+
+      client.once('connectionSuccess', onConnected);
+
+      // Avoid missing a connection event.
+      if (this.connected) {
+        client.removeListener('connectionSuccess', onConnected);
+        resolve();
+        return;
+      }
+
+      const timeout = setTimeout(() => {
+        client.removeListener('connectionSuccess', onConnected);
+        reject(
+          new Error('Timed out waiting for Roomba MQTT reconnection.'),
+        );
+      }, timeoutMs);
+
+      void new Promise<void>((finish) => {
+        const originalResolve = finish;
+        client.once('connectionSuccess', () => {
+          clearTimeout(timeout);
+          originalResolve();
+        });
+      });
+    });
+  }
   private hasConnectedBefore = false;
 
   private readonly reconnectListeners =
@@ -592,20 +641,23 @@ export class V4MqttClient {
       (_, reject) => {
 
         const timeout =
-          setTimeout(
-            () => {
+  setTimeout(
+    () => {
 
-              this.connected =
-                false;
+      this.log.warn(
+        'Roomba MQTT publish timed out. ' +
+        'Waiting for the MQTT connection lifecycle to report its status.',
+      );
 
-              reject(
-                new Error(
-                  'Timed out publishing to iRobot AWS IoT.',
-                ),
-              );
-            },
-            10_000,
-          );
+      reject(
+        new Error(
+          'Timed out publishing to iRobot AWS IoT.',
+        ),
+      );
+
+    },
+    10_000,
+  );
 
         void publishPromise.finally(
           () => {

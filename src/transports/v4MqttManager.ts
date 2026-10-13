@@ -282,7 +282,11 @@ export class V4MqttManager {
       return this.connectPromise;
     }
 
-    if (this.mqttClient && !this.shutdownComplete) {
+    if (
+      this.mqttClient &&
+  !this.shutdownComplete &&
+  this.mqttClient.isConnected()
+    ) {
       return Promise.resolve();
     }
 
@@ -297,6 +301,19 @@ export class V4MqttManager {
       }
 
       if (this.mqttClient) {
+
+        // The existing AWS IoT MQTT5 client manages
+        // its own automatic reconnection.
+        //
+        // Never create a second client while the
+        // original client is still running.
+        if (!this.mqttClient.isConnected()) {
+          this.log.warn(
+            'Shared Roomba MQTT client is disconnected. ' +
+      'Waiting for AWS IoT automatic reconnection.',
+          );
+        }
+
         return;
       }
 
@@ -354,6 +371,8 @@ export class V4MqttManager {
         'Shared Roomba MQTT connection is unavailable.',
       );
     }
+    await this.mqttClient.waitForConnection();
+
 
     await this.mqttClient.sendCommand(
       command,
@@ -378,6 +397,7 @@ export class V4MqttManager {
         'Shared Roomba MQTT connection is unavailable.',
       );
     }
+    await this.mqttClient.waitForConnection();
 
     await this.mqttClient.sendRoomCleaningCommand(
       p2mapId,
