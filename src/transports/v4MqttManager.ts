@@ -5,9 +5,10 @@ import {
   type V4MqttMessage,
 } from './v4MqttClient.js';
 
-import type {
-  V4Session,
-  V4Robot,
+import {
+  type V4Authentication,
+  type V4Session,
+  type V4Robot,
 } from './v4Authentication.js';
 
 /**
@@ -38,6 +39,10 @@ export class V4MqttManager {
 
   private restorePromise?: Promise<void>;
 
+  private renewalTimer?: ReturnType<typeof setTimeout>;
+
+  private renewalPromise?: Promise<void>;
+
   private readonly activeRobots = new Set<string>();
 
   private readonly pendingRobots = new Set<string>();
@@ -47,12 +52,20 @@ export class V4MqttManager {
   private readonly messageListeners =
     new Map<string, Set<(message: V4MqttMessage) => void>>();
 
+  private authentication?: V4Authentication;  
+
   private constructor(
   private readonly log: Logging,
   private session: V4Session,
   ) {
   }
+  public setAuthentication(
+    authentication: V4Authentication,
+  ): void {
 
+    this.authentication = authentication;
+
+  }
   public static getInstance(
     log: Logging,
     session: V4Session,
@@ -83,12 +96,38 @@ export class V4MqttManager {
     session: V4Session,
   ): void {
 
-    if (session.iotClientId !== this.session.iotClientId) {
-      throw new Error(
-        'Cannot update MQTT manager with a different client ID.',
+    const oldClientId = this.session.iotClientId;
+    const newClientId = session.iotClientId;
+
+    if (oldClientId !== newClientId) {
+
+      // Prevent accidentally taking over another manager.
+      const existingManager =
+      V4MqttManager.instances.get(newClientId);
+
+      if (
+        existingManager &&
+      existingManager !== this
+      ) {
+        throw new Error(
+          'MQTT client ID is already assigned to another manager.',
+        );
+      }
+
+      // Update the shared manager's registry key.
+      V4MqttManager.instances.delete(oldClientId);
+
+      V4MqttManager.instances.set(
+        newClientId,
+        this,
+      );
+
+      this.log.info(
+        'Roomba MQTT client ID updated during authentication renewal.',
       );
     }
 
+    // Retain the same manager and all registered robots.
     this.session = session;
   }
   public registerRobot(
@@ -179,6 +218,15 @@ export class V4MqttManager {
       }
 
       this.activeRobots.add(robot.blid);
+      // Start one shared authentication renewal timer
+      // after the first robot becomes active.
+      if (
+        this.activeRobots.size === 1 &&
+  !this.renewalTimer &&
+  !this.renewalPromise
+      ) {
+        this.scheduleRenewal();
+      }
 
     } finally {
 
@@ -212,8 +260,31 @@ export class V4MqttManager {
     if (this.pendingRobots.has(robotBlid)) {
       this.cancelledRobots.add(robotBlid);
     }
+    // Cancel scheduled renewal when the last robot
+    // is being released.
+    if (
+      this.activeRobots.size === 1 &&
+  this.activeRobots.has(robotBlid) &&
+  this.pendingRobots.size === 0
+    ) {
+      if (this.renewalTimer) {
+        clearTimeout(this.renewalTimer);
+        this.renewalTimer = undefined;
+      }
+    }
 
     this.activeRobots.delete(robotBlid);
+
+    // Allow an in-progress credential renewal
+    // to finish before shutting down MQTT.
+    if (this.renewalPromise) {
+      try {
+        await this.renewalPromise;
+      } catch {
+        // Renewal errors are logged by the scheduler.
+        // Continue releasing the robot safely.
+      }
+    }
 
     // Finish any shutdown already underway.
     if (this.shutdownComplete) {
@@ -244,7 +315,12 @@ export class V4MqttManager {
       return;
     }
    
-   
+    // No scheduled authentication renewal may survive
+    // shutdown of the shared MQTT connection.
+    if (this.renewalTimer) {
+      clearTimeout(this.renewalTimer);
+      this.renewalTimer = undefined;
+    }
 
     this.shutdownComplete = new Promise<void>((resolve) => {
       this.finishShutdown = resolve;
@@ -404,6 +480,179 @@ export class V4MqttManager {
       roomId,
       robotBlid,
     );
+  }
+  private scheduleRenewal(
+    delayMs = 50 * 60 * 1000,
+  ): void {
+
+    if (this.renewalTimer) {
+      clearTimeout(this.renewalTimer);
+    }
+
+    // Renew before the observed 60-minute expiry.
+    this.renewalTimer = setTimeout(() => {
+
+      this.renewalTimer = undefined;
+
+      if (this.renewalPromise) {
+        return;
+      }
+      let renewalFailed = false;
+
+      const renewal = this.renewConnection();
+
+      this.renewalPromise = renewal;
+
+      void renewal
+        .catch((error) => {
+
+          renewalFailed = true;
+
+          this.log.error(
+            `Roomba MQTT credential renewal failed: ${String(error)}`,
+          );
+
+        })
+        .finally(() => {
+          if (this.renewalPromise === renewal) {
+            this.renewalPromise = undefined;
+          }
+
+          // Schedule the next renewal only while
+          // robots still require the connection.
+          if (
+            this.activeRobots.size > 0 &&
+  !this.shutdownComplete &&
+  !this.disconnectPromise
+          ) {
+
+            if (renewalFailed) {
+
+              // Retry authentication after 60 seconds.
+              this.scheduleRenewal(60 * 1000);
+
+            } else {
+
+              // Successful renewal: schedule the next
+              // credential refresh in 50 minutes.
+              this.scheduleRenewal();
+
+            }
+
+          }
+        });
+
+    }, delayMs);
+
+  }
+  private async renewConnection(): Promise<void> {
+
+    // Never renew a connection during shutdown
+    // or when no robots are using MQTT.
+    if (
+      this.shutdownComplete ||
+    this.disconnectPromise ||
+    this.activeRobots.size === 0
+    ) {
+      return;
+    }
+
+    const authentication = this.authentication;
+
+    if (!authentication) {
+      throw new Error(
+        'Roomba MQTT authentication is unavailable for renewal.',
+      );
+    }
+
+    this.log.info(
+      'Renewing shared Roomba MQTT authentication...',
+    );
+
+    // Authenticate once for the entire iRobot account.
+    const session = await authentication.authenticate();
+
+    // Wait for any existing connection attempt to finish
+    // before replacing the shared MQTT client.
+    if (this.connectPromise) {
+      try {
+        await this.connectPromise;
+      } catch {
+        // A failed connection will be replaced
+        // using the newly authenticated session.
+      }
+    }
+
+    // A robot may have been released while waiting.
+    if (
+      this.shutdownComplete ||
+  this.disconnectPromise ||
+  this.activeRobots.size === 0
+    ) {
+      return;
+    }
+
+    // Authentication is asynchronous. Shutdown may have
+    // started while fresh credentials were being obtained.
+    if (
+      this.shutdownComplete ||
+  this.disconnectPromise ||
+  this.activeRobots.size === 0
+    ) {
+      this.log.info(
+        'Roomba MQTT renewal cancelled because the connection is shutting down.',
+      );
+
+      return;
+    }
+
+    // Stop the previous connection before creating another.
+    const previousClient = this.mqttClient;
+
+    this.mqttClient = undefined;
+
+    if (previousClient) {
+      await previousClient.disconnect();
+    }
+
+    // Apply fresh credentials to the shared manager.
+    this.updateSession(session);
+
+    // Establish exactly one replacement MQTT connection.
+    // If this fails, leave the manager ready for the
+    // scheduler's next authentication attempt.
+    try {
+
+      await this.openConnection();
+
+    } catch (error) {
+
+      this.mqttClient = undefined;
+
+      this.log.warn(
+        'Roomba MQTT renewal connection failed. ' +
+    'A fresh authentication attempt will follow.',
+      );
+
+      throw error;
+
+    }
+
+    const mqttClient = this.mqttClient;
+
+    if (!mqttClient) {
+      throw new Error(
+        'Renewed Roomba MQTT connection is unavailable.',
+      );
+    }
+
+    // Restore both robots using the shared connection.
+    await this.restoreSubscriptions(mqttClient);
+
+    this.log.info(
+      'Shared Roomba MQTT authentication renewed successfully.',
+    );
+
   }
   private async openConnection(): Promise<void> {
 

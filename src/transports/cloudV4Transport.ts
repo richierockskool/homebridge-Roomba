@@ -113,6 +113,12 @@ export class CloudV4Transport implements RoombaTransport {
     session,
   );
 
+    // Allow the shared manager to renew
+    // the iRobot account session.
+    mqttManager.setAuthentication(
+      this.authentication,
+    );
+
     mqttManager.registerRobot(robot);
 
     this.mapClient =
