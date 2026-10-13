@@ -280,6 +280,7 @@ export class RoombaPlatform implements DynamicPlatformPlugin {
         this,
         accessory,
         robot.blid,
+        accessoryName,
       );
     }
   }

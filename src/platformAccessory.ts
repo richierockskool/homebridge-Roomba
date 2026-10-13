@@ -36,6 +36,7 @@ export class RoombaAccessory {
   private readonly platform: RoombaPlatform,
   private readonly accessory: PlatformAccessory,
   private readonly robotBlid: string,
+  private readonly robotName: string,
   ) {
 
     this.controller =
