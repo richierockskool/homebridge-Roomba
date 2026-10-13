@@ -68,19 +68,32 @@ export class RoombaAccessory {
     /**
      * Cleaning switch
      */
-    this.cleaningService =
-      this.accessory.getService('Cleaning') ||
-      this.accessory.addService(
-        this.platform.Service.Switch,
-        'Cleaning',
-        'roomba-cleaning',
-      );
+    /**
+ * Cleaning switch
+ *
+ * Standalone HomeKit accessory with its own name.
+ */
+    const cleaningAccessory =
+  this.platform.getOrCreateControlAccessory(
+    this.robotBlid,
+    'cleaning',
+    `${this.accessory.displayName} Cleaning`,
+  );
 
-    this.cleaningService
-      .setCharacteristic(
-        this.platform.Characteristic.Name,
-        'Cleaning',
-      );
+    this.cleaningService =
+  cleaningAccessory.getService(
+    this.platform.Service.Switch,
+  ) ||
+  cleaningAccessory.addService(
+    this.platform.Service.Switch,
+    `${this.accessory.displayName} Cleaning`,
+    'roomba-cleaning',
+  );
+
+    this.cleaningService.setCharacteristic(
+      this.platform.Characteristic.Name,
+      `${this.accessory.displayName} Cleaning`,
+    );
 
     this.cleaningService
       .getCharacteristic(
@@ -93,22 +106,35 @@ export class RoombaAccessory {
         this.getCleaning.bind(this),
       );
 
+    this.platform.api.updatePlatformAccessories([
+      cleaningAccessory,
+    ]);
     /**
  * Return to Dock switch
+ *
+ * Standalone HomeKit accessory.
  */
+    const dockAccessory =
+  this.platform.getOrCreateControlAccessory(
+    this.robotBlid,
+    'dock',
+    `${this.accessory.displayName} Return to Dock`,
+  );
+
     this.dockService =
-  this.accessory.getService('Return to Dock') ||
-  this.accessory.addService(
+  dockAccessory.getService(
     this.platform.Service.Switch,
-    'Return to Dock',
+  ) ||
+  dockAccessory.addService(
+    this.platform.Service.Switch,
+    `${this.accessory.displayName} Return to Dock`,
     'roomba-dock',
   );
 
-    this.dockService
-      .setCharacteristic(
-        this.platform.Characteristic.Name,
-        'Return to Dock',
-      );
+    this.dockService.setCharacteristic(
+      this.platform.Characteristic.Name,
+      `${this.accessory.displayName} Return to Dock`,
+    );
 
     this.dockService
       .getCharacteristic(
@@ -117,6 +143,30 @@ export class RoombaAccessory {
       .onSet(
         this.setDock.bind(this),
       );
+
+    this.platform.api.updatePlatformAccessories([
+      dockAccessory,
+    ]);
+    /**
+ * Remove legacy Cleaning and Dock switches
+ * from the original Roomba accessory.
+ *
+ * Their replacements are now standalone accessories.
+ */
+    for (const service of [...this.accessory.services]) {
+
+      if (
+        service.subtype === 'roomba-cleaning' ||
+    service.subtype === 'roomba-dock'
+      ) {
+        this.accessory.removeService(service);
+      }
+
+    }
+
+    this.platform.api.updatePlatformAccessories([
+      this.accessory,
+    ]);
     /**
  * Battery
  */

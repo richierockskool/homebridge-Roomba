@@ -237,6 +237,7 @@ export class RoombaPlatform implements DynamicPlatformPlugin {
         this.log.info(
           `Restoring Roomba: ${accessoryName} (${robot.sku})`,
         );
+        accessory.displayName = accessoryName;
 
         accessory.context.device = {
           id: robot.blid,
@@ -258,6 +259,7 @@ export class RoombaPlatform implements DynamicPlatformPlugin {
           accessoryName,
           uuid,
         );
+        accessory.displayName = accessoryName;
 
         accessory.context.device = {
           id: robot.blid,
