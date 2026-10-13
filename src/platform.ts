@@ -29,6 +29,104 @@ export class RoombaPlatform implements DynamicPlatformPlugin {
 
   public readonly accessories: Map<string, PlatformAccessory> = new Map();
 
+  /**
+ * Remove standalone Roomba control accessories
+ * that are no longer present in the current Smart Map.
+ */
+  public removeObsoleteRoomAccessories(
+    robotBlid: string,
+    validRoomIds: Set<string>,
+  ): void {
+
+    for (const [uuid, accessory] of this.accessories) {
+
+      const control = accessory.context.roombaControl as
+      | {
+          robotBlid?: string;
+          controlId?: string;
+        }
+      | undefined;
+
+      if (
+        control?.robotBlid !== robotBlid ||
+      !control.controlId?.startsWith('room-')
+      ) {
+        continue;
+      }
+
+      const roomId = control.controlId.slice('room-'.length);
+
+      if (validRoomIds.has(roomId)) {
+        continue;
+      }
+
+      this.log.info(
+        `Removing obsolete Roomba room accessory: ${accessory.displayName}`,
+      );
+
+      this.api.unregisterPlatformAccessories(
+        PLUGIN_NAME,
+        PLATFORM_NAME,
+        [accessory],
+      );
+
+      this.accessories.delete(uuid);
+    }
+  }
+
+  /**
+ * Register or restore a named HomeKit control accessory.
+ *
+ * Uses a deterministic UUID so the same control is restored
+ * rather than duplicated after a Homebridge restart.
+ */
+  public getOrCreateControlAccessory(
+    robotBlid: string,
+    controlId: string,
+    controlName: string,
+  ): PlatformAccessory {
+
+    const uuid = this.api.hap.uuid.generate(
+      `homebridge-roomba-pro-control-${robotBlid}-${controlId}`,
+    );
+
+    let accessory = this.accessories.get(uuid);
+
+    if (accessory) {
+      this.log.info(
+        `Restoring Roomba control: ${controlName}`,
+      );
+
+      accessory.displayName = controlName;
+
+      return accessory;
+    }
+
+    accessory = new this.api.platformAccessory(
+      controlName,
+      uuid,
+    );
+
+    accessory.context.roombaControl = {
+      robotBlid,
+      controlId,
+    };
+
+    this.api.registerPlatformAccessories(
+      PLUGIN_NAME,
+      PLATFORM_NAME,
+      [accessory],
+    );
+
+    this.accessories.set(uuid, accessory);
+
+    this.log.info(
+      `Registered Roomba control: ${controlName}`,
+    );
+
+    return accessory;
+  }
+
   constructor(
     public readonly log: Logging,
     public readonly config: PlatformConfig,

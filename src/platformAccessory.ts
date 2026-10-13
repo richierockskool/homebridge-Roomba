@@ -21,6 +21,12 @@ export class RoombaAccessory {
   private readonly cleaningService: Service;
   private readonly roomServices =
     new Map<string, Service>();
+  /**
+ * HomeKit accessories representing individual
+ * Smart Map rooms.
+ */
+  private readonly roomAccessories =
+    new Map<string, PlatformAccessory>(); 
   private readonly dockService: Service;
   private readonly batteryService: Service;
   private lastCleaningState = false;
@@ -232,55 +238,82 @@ export class RoombaAccessory {
  */
   private configureRoomServices(): void {
 
-    const rooms =
-    this.controller.getRooms();
+    const rooms = this.controller.getRooms();
 
     this.platform.log.info(
       `Configuring ${rooms.length} Roomba room service(s).`,
     );
+    /**
+ * An empty Smart Map response may indicate a temporary
+ * iRobot API or connection problem.
+ *
+ * Preserve existing HomeKit accessories rather than
+ * deleting rooms until a valid map is available.
+ */
+    if (rooms.length === 0) {
+
+      this.platform.log.warn(
+        'Roomba Smart Map returned no rooms. ' +
+    'Preserving existing HomeKit room accessories.',
+      );
+
+      return;
+    }
+
+    const validRoomIds = new Set(
+      rooms.map(room => room.id),
+    );
 
     for (const room of rooms) {
 
-      const subtype =
-      `roomba-room-${room.id}`;
-
-      const service =
-      this.accessory.getServiceById(
-        this.platform.Service.Switch,
-        subtype,
-      ) ||
-      this.accessory.addService(
-        this.platform.Service.Switch,
+      const roomAccessory =
+      this.platform.getOrCreateControlAccessory(
+        this.robotBlid,
+        `room-${room.id}`,
         room.name,
-        subtype,
       );
 
-      service.setCharacteristic(
+      this.roomAccessories.set(
+        room.id,
+        roomAccessory,
+      );
+
+      // Give each room its own named HomeKit Switch accessory.
+      const roomSwitch =
+      roomAccessory.getService(
+        this.platform.Service.Switch,
+      ) ||
+      roomAccessory.addService(
+        this.platform.Service.Switch,
+        room.name,
+      );
+
+      roomSwitch.setCharacteristic(
         this.platform.Characteristic.Name,
         room.name,
       );
 
-      service
+      roomSwitch
         .getCharacteristic(
           this.platform.Characteristic.On,
         )
-        .onSet(
-          async (
-            value: CharacteristicValue,
-          ) => {
+        .onSet(async (value: CharacteristicValue) => {
+          await this.setRoomCleaning(
+            room.id,
+            room.name,
+            value,
+          );
+        });
 
-            await this.setRoomCleaning(
-              room.id,
-              room.name,
-              value,
-            );
-          },
-        );
-
+      // Track the NEW service for cleaning-state updates.
       this.roomServices.set(
         room.id,
-        service,
+        roomSwitch,
       );
+
+      this.platform.api.updatePlatformAccessories([
+        roomAccessory,
+      ]);
 
       this.platform.log.info(
         `Roomba HomeKit room registered: ${room.name} [${room.id}]`,
@@ -288,42 +321,60 @@ export class RoombaAccessory {
     }
 
     /**
-     * Remove obsolete room switches that are no longer
-     * present in the robot's current Smart Map.
-     *
-     * Preserve all current room subtypes and leave
-     * Cleaning, Dock and Battery services untouched.
-     */
-    const validRoomSubtypes = new Set(
-      rooms.map((room) => `roomba-room-${room.id}`),
-    );
-
+   * Remove the original room Switch services from
+   * the robot accessory.
+   *
+   * Cleaning, Return to Dock and Battery are preserved.
+   */
     for (const service of [...this.accessory.services]) {
-
-      const subtype = service.subtype;
 
       if (
         service.UUID !== this.platform.Service.Switch.UUID ||
-        !subtype?.startsWith('roomba-room-') ||
-        validRoomSubtypes.has(subtype)
+      !service.subtype?.startsWith('roomba-room-')
       ) {
         continue;
       }
 
       this.platform.log.info(
-        `Removing obsolete Roomba room service: ${service.displayName}`,
+        `Removing original Roomba room switch: ${service.displayName}`,
       );
 
       this.accessory.removeService(service);
     }
 
-    // Save the updated room services to Homebridge.
+    /**
+   * Remove room accessories from the current in-memory
+   * tracking maps if their rooms are no longer present.
+   *
+   * Note: Homebridge cache unregistration of obsolete
+   * standalone room accessories will be handled separately.
+   */
+    for (const roomId of [...this.roomAccessories.keys()]) {
+
+      if (validRoomIds.has(roomId)) {
+        continue;
+      }
+
+      this.roomAccessories.delete(roomId);
+      this.roomServices.delete(roomId);
+    }
+    /**
+ * Remove standalone room accessories that are
+ * no longer present in the current Smart Map.
+ *
+ * Only affects this robot's obsolete rooms.
+ */
+    this.platform.removeObsoleteRoomAccessories(
+      this.robotBlid,
+      validRoomIds,
+    );
+    // Save the updated original robot accessory.
     this.platform.api.updatePlatformAccessories([
       this.accessory,
     ]);
 
     this.platform.log.info(
-      'Roomba Smart Map room services saved to Homebridge.',
+      'Roomba Smart Map room accessories saved to Homebridge.',
     );
   }
   
