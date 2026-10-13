@@ -41,42 +41,25 @@ export class V4MqttClient {
       return;
     }
 
+    const client = this.client;
+
+    if (!client) {
+      throw new Error('Roomba MQTT client is unavailable.');
+    }
+
     await new Promise<void>((resolve, reject) => {
 
-      const client = this.client;
-
-      if (!client) {
-        reject(new Error('Roomba MQTT client is unavailable.'));
-        return;
-      }
-
-      const onConnected = (): void => {
-        resolve();
-      };
-
-      client.once('connectionSuccess', onConnected);
-
-      // Avoid missing a connection event.
-      if (this.connected) {
-        client.removeListener('connectionSuccess', onConnected);
-        resolve();
-        return;
-      }
-
       const timeout = setTimeout(() => {
-        client.removeListener('connectionSuccess', onConnected);
         reject(
           new Error('Timed out waiting for Roomba MQTT reconnection.'),
         );
       }, timeoutMs);
 
-      void new Promise<void>((finish) => {
-        const originalResolve = finish;
-        client.once('connectionSuccess', () => {
-          clearTimeout(timeout);
-          originalResolve();
-        });
+      client.once('connectionSuccess', () => {
+        clearTimeout(timeout);
+        resolve();
       });
+
     });
   }
   private hasConnectedBefore = false;
@@ -183,7 +166,17 @@ export class V4MqttClient {
         }
       },
     );
+    client.on(
+      'connectionFailure',
+      (eventData: mqtt5.ConnectionFailureEvent) => {
 
+        this.log.warn(
+          'Roomba AWS IoT MQTT connection attempt failed: ' +
+      String(eventData.error),
+        );
+
+      },
+    );
     client.on(
       'disconnection',
       (eventData: mqtt5.DisconnectionEvent) => {
