@@ -186,13 +186,15 @@ export class V4MqttClient {
 
     client.on(
       'disconnection',
-      () => {
+      (eventData: mqtt5.DisconnectionEvent) => {
 
         this.connected = false;
 
         this.log.warn(
-          'Roomba AWS IoT MQTT connection lost.',
+          'Roomba AWS IoT MQTT connection lost: ' +
+      String(eventData.error),
         );
+
       },
     );
 
