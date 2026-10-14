@@ -278,21 +278,29 @@ export class RoombaAccessory {
    */
   private async setDock(
     value: CharacteristicValue,
-  ) {
+  ): Promise<void> {
 
-    const requestedOn =
-      value as boolean;
+    const requestedOn = value as boolean;
 
     if (!requestedOn) {
       return;
     }
 
-    await this.controller.returnToDock();
+    // Already docked — keep the switch OFF.
+    const state = this.controller.getState();
 
-    this.dockService.updateCharacteristic(
-      this.platform.Characteristic.On,
-      false,
-    );
+    if (state.isDocked || state.isCharging) {
+
+      this.dockService.updateCharacteristic(
+        this.platform.Characteristic.On,
+        false,
+      );
+
+      return;
+    }
+
+    // Send the docking command.
+    await this.controller.returnToDock();
   }
 
   /**
@@ -529,6 +537,15 @@ export class RoombaAccessory {
   private handleStateUpdate(
     state: RoombaState,
   ) {
+    // Automatically reset Return to Dock
+  // when the robot reaches its dock.
+    if (state.isDocked || state.isCharging) {
+
+      this.dockService.updateCharacteristic(
+        this.platform.Characteristic.On,
+        false,
+      );
+    }
 
     this.cleaningService.updateCharacteristic(
       this.platform.Characteristic.On,
