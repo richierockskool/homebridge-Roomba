@@ -177,8 +177,12 @@ export class RoombaAccessory {
   ) ||
   this.accessory.addService(
     this.platform.Service.Battery,
-    'Roomba Battery',
+    'Battery',
   );
+    this.batteryService.setCharacteristic(
+      this.platform.Characteristic.Name,
+      `${this.robotName} Battery`,
+    );
 
     /**
      * Listen for all state updates from RoombaController.

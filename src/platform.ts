@@ -230,6 +230,10 @@ export class RoombaPlatform implements DynamicPlatformPlugin {
 
       const accessoryName = robot.name;
 
+      this.log.info(
+        `Roomba discovered name: "${accessoryName}"`,
+      );
+
       let accessory = this.accessories.get(uuid);
 
       if (accessory) {
