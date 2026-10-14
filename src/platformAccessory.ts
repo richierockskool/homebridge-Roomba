@@ -242,6 +242,15 @@ export class RoombaAccessory {
 
     if (requestedOn) {
 
+      if (this.activeRoomId !== undefined) {
+
+        this.platform.log.info(
+          'Ignoring general START: targeted room cleaning is active.',
+        );
+
+        return;
+      }
+
       this.platform.log.info(
         'HomeKit Cleaning requested ON.',
       );
@@ -249,6 +258,28 @@ export class RoombaAccessory {
       await this.controller.startCleaning();
 
     } else {
+
+      // Do not interrupt a targeted room cleaning mission.
+      if (this.activeRoomId !== undefined) {
+
+        this.platform.log.info(
+          'Ignoring general STOP: targeted room cleaning is active.',
+        );
+
+        return;
+      }
+
+      // No need to STOP a robot that is already idle.
+      const state = this.controller.getState();
+
+      if (!state.isCleaning) {
+
+        this.platform.log.debug(
+          'Ignoring general STOP: robot is already idle.',
+        );
+
+        return;
+      }
 
       this.platform.log.info(
         'HomeKit Cleaning requested OFF.',
@@ -341,11 +372,18 @@ export class RoombaAccessory {
     for (const room of rooms) {
 
       const roomAccessory =
-      this.platform.getOrCreateControlAccessory(
-        this.robotBlid,
-        `room-${room.id}`,
-        room.name,
-      );
+  this.platform.getOrCreateControlAccessory(
+    this.robotBlid,
+    `room-${room.id}`,
+    `${this.robotName} ${room.name} Cleaning`,
+  );
+
+      roomAccessory
+        .getService(this.platform.Service.AccessoryInformation)
+        ?.setCharacteristic(
+          this.platform.Characteristic.Name,
+          `${this.robotName} ${room.name} Cleaning`,
+        );
 
       this.roomAccessories.set(
         room.id,
@@ -364,7 +402,7 @@ export class RoombaAccessory {
 
       roomSwitch.setCharacteristic(
         this.platform.Characteristic.Name,
-        room.name,
+        `${this.robotName} ${room.name} Cleaning`,
       );
 
       roomSwitch
@@ -559,9 +597,12 @@ export class RoombaAccessory {
  * so the selected room remains ON while the mission runs.
  */
     if (
-      this.lastCleaningState &&
-  !state.isCleaning &&
-  this.activeRoomId !== undefined
+      this.activeRoomId !== undefined &&
+  (
+    (this.lastCleaningState && !state.isCleaning) ||
+    state.isDocked ||
+    state.isCharging
+  )
     ) {
 
       /**
