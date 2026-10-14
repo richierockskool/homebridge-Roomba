@@ -275,6 +275,19 @@ export class RoombaPlatform implements DynamicPlatformPlugin {
 
         this.accessories.set(uuid, accessory);
       }
+      // Keep the HomeKit accessory name synchronized
+      // with the robot's current name.
+      const informationService =
+        accessory.getService(
+          this.Service.AccessoryInformation,
+        );
+
+      if (informationService) {
+        informationService.setCharacteristic(
+          this.Characteristic.Name,
+          accessoryName,
+        );
+      }
 
       new RoombaAccessory(
         this,
