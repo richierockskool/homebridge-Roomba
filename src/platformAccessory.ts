@@ -95,6 +95,12 @@ export class RoombaAccessory {
       this.platform.Characteristic.Name,
       `${this.accessory.displayName} Cleaning`,
     );
+    cleaningAccessory
+      .getService(this.platform.Service.AccessoryInformation)
+      ?.setCharacteristic(
+        this.platform.Characteristic.Name,
+        `${this.robotName} Cleaning`,
+      );
 
     this.cleaningService
       .getCharacteristic(
@@ -121,7 +127,12 @@ export class RoombaAccessory {
     'dock',
     `${this.accessory.displayName} Return to Dock`,
   );
-
+    dockAccessory
+      .getService(this.platform.Service.AccessoryInformation)
+      ?.setCharacteristic(
+        this.platform.Characteristic.Name,
+        `${this.robotName} Return to Dock`,
+      );
     this.dockService =
   dockAccessory.getService(
     this.platform.Service.Switch,
