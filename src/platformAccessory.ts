@@ -192,7 +192,7 @@ export class RoombaAccessory {
   );
     this.batteryService.setCharacteristic(
       this.platform.Characteristic.Name,
-      `${this.robotName} Battery`,
+      'Battery',
     );
 
     /**
@@ -375,16 +375,14 @@ export class RoombaAccessory {
   this.platform.getOrCreateControlAccessory(
     this.robotBlid,
     `room-${room.id}`,
-    `${this.robotName} ${room.name} Clean`,
+    room.name,
   );
 
       roomAccessory
         .getService(this.platform.Service.AccessoryInformation)
         ?.setCharacteristic(
           this.platform.Characteristic.Name,
-          `${this.robotName} ${room.name} Clean
-          
-          `,
+          room.name,
         );
 
       this.roomAccessories.set(
@@ -404,7 +402,7 @@ export class RoombaAccessory {
 
       roomSwitch.setCharacteristic(
         this.platform.Characteristic.Name,
-        `${this.robotName} ${room.name} Clean`,
+        room.name,
       );
 
       roomSwitch
