@@ -4,101 +4,74 @@
 [![npm downloads](https://img.shields.io/npm/dt/homebridge-roomba-pro.svg)](https://www.npmjs.com/package/homebridge-roomba-pro)
 [![Homebridge](https://img.shields.io/badge/Homebridge-Plugin-purple.svg)](https://homebridge.io)
 
-Modern iRobot Roomba support for Homebridge and Apple HomeKit.
+**Modern iRobot Roomba support for Homebridge and Apple HomeKit, featuring Smart Map room cleaning and live robot status.**
 
-**homebridge-roomba-pro** brings newer iRobot Roomba models into Apple HomeKit, including robots using iRobot's newer V4 cloud platform.
+**homebridge-roomba-pro** brings newer iRobot Roomba models into Apple Home through iRobot's V4 cloud platform and AWS IoT MQTT communication.
 
-Control your Roomba directly from the Apple Home app and use it in HomeKit scenes and automations.
+Control your Roomba, clean individual mapped rooms, monitor battery levels, and send your robot back to its dock — all from Apple Home.
 
 ## Features
 
-- 🧹 Start and stop cleaning from Apple Home
-- 🏠 Send the Roomba home to its dock
-- 🔋 Live battery level
+- 🧹 Start and stop cleaning directly from Apple Home
+- 🚪 Clean individual rooms using iRobot Smart Maps
+- 🗺️ Automatically discover available mapped rooms
+- 🏠 Send your Roomba back to its charging dock
+- 🔋 Live battery percentage
 - ⚡ Charging status
 - 🅿️ Docked status
-- 🧭 Live robot state updates
-- 📡 iRobot V4 cloud / AWS IoT MQTT communication
-- 🚪 Room-specific cleaning controls
-- 🏡 HomeKit scenes and automations
-- 🔄 Automatic state synchronization with the robot
+- 📡 Live robot updates through AWS IoT MQTT
+- 🤖 Multiple Roomba support
+- 🏡 Apple Home scenes and automations
+- 🔄 Automatic synchronization between Roomba and HomeKit
+- 🎛️ Independent HomeKit switches for cleaning, docking, and individual rooms
 
 ## Why Roomba Pro?
 
-Many existing Homebridge Roomba plugins were designed around older generations of
-iRobot's local communication protocol.
+Many existing Homebridge Roomba plugins were originally designed for older iRobot models that communicate through local network protocols.
 
-Newer Roomba models use iRobot's cloud infrastructure and AWS IoT MQTT for
-communication.
+Newer Roomba generations use iRobot's cloud infrastructure and AWS IoT MQTT communication.
 
-**homebridge-roomba-pro** is designed specifically to support these newer robots
-while presenting them as native accessories inside Apple Home.
+**homebridge-roomba-pro** is designed for these newer robots, providing an interface between the iRobot cloud platform and Apple HomeKit.
+
+The goal is simple: make your Roomba feel like a native part of your Apple smart home.
 
 ## HomeKit Controls
 
-Depending on the capabilities reported by your Roomba, HomeKit can expose:
+Each discovered Roomba can expose the following controls:
 
 | Control | Function |
 |---|---|
-| Cleaning | Start or stop a cleaning job |
-| Dock | Send the Roomba back to its dock |
-| Battery | Current battery percentage |
-| Charging | Shows when the robot is charging |
-| Docked | Shows when the robot is on its dock |
-| Rooms | Start cleaning of an individual room |
+| Cleaning | Start or stop a general cleaning job |
+| Return to Dock | Send the robot back to its charging dock |
+| Battery | Display current battery percentage and charging status |
+| Smart Map Rooms | Start cleaning a selected room |
+| Live Status | Update HomeKit as the robot's state changes |
 
-Room controls allow commands such as:
+### Individual Robot Controls
 
-**Kitchen → ON**
+For example, a Roomba named **Big Bob** may appear with:
 
-to start a cleaning job targeted specifically at the Kitchen.
+- Big Bob Cleaning
+- Big Bob Return to Dock
+- Big Bob Battery
 
-## Requirements
+A second Roomba named **Little Bob** may appear with:
 
-- Homebridge
-- Node.js supported by your Homebridge installation
-- An iRobot account
-- A compatible Roomba
-- Internet access for iRobot cloud communication
-- Apple Home / HomeKit
+- Little Bob Cleaning
+- Little Bob Return to Dock
+- Little Bob Battery
 
-## Installation
+Robot names are intended to come from the iRobot account's discovered robot information rather than requiring users to hardcode their robot names.
 
-Install through the Homebridge UI by searching for:
+Apple Home may retain previously customized accessory names.
 
-**Roomba Pro**
+## Smart Map Room Cleaning
 
-or install from the command line:
+One of the main features of Roomba Pro is support for **individual room cleaning**.
 
-    npm install -g homebridge-roomba-pro
+For compatible robots, the plugin discovers room information from the robot's existing iRobot Smart Map.
 
-Then restart Homebridge.
-
-## Configuration
-
-Open:
-
-**Homebridge → Plugins → Roomba Pro → Settings**
-
-Enter your iRobot account credentials and save the configuration.
-
-Restart Homebridge after making configuration changes.
-
-## How It Works
-
-Roomba Pro connects to iRobot's cloud service and establishes a live MQTT
-connection to the robot through AWS IoT.
-
-Robot state messages are translated into HomeKit characteristics so changes such
-as cleaning, docking, charging and battery level are reflected automatically in
-Apple Home.
-
-Commands sent from Apple Home are translated back into the appropriate iRobot
-commands.
-
-## Room Cleaning
-
-Compatible robots can expose their mapped rooms as individual HomeKit controls.
+Rooms can appear in Apple Home as individual switches.
 
 For example:
 
@@ -107,62 +80,105 @@ For example:
 - Dining Room
 - Hallway
 - Bedroom
+- Storage Room
 
-Turning on a room accessory tells the Roomba to clean that specific room.
+To clean a specific room, simply turn on its switch in Apple Home.
 
-Room availability depends on the maps and room information available from the
-robot.
+**Kitchen → ON**
 
-## Troubleshooting
+The plugin sends a targeted room-cleaning command to the Roomba rather than starting a general cleaning job.
 
-If the robot does not respond, first check the Homebridge log.
+### Automatic Room Switch Updates
 
-Useful Roomba Pro log entries include connection, authentication, MQTT,
-command and robot-state information.
+Room switches are designed to reflect the cleaning operation:
 
-When reporting a problem, please include:
+1. Turn ON the desired room switch.
+2. The Roomba receives the targeted cleaning command.
+3. The selected room switch remains ON while the cleaning job is active.
+4. When the cleaning operation finishes, the room switch returns to OFF.
 
-1. Roomba model
-2. Homebridge version
-3. Node.js version
-4. Roomba Pro version
-5. Relevant Homebridge log entries
+The general Cleaning switch also reflects the robot's cleaning status.
 
-**Do not post passwords, authentication tokens or other iRobot credentials.**
+This behaviour has been tested with two Roomba robots.
 
-## Supported Robots
+### Important Notes
 
-Roomba Pro is primarily being developed for newer iRobot robots using the
-current iRobot cloud/V4 architecture.
+- The Roomba must already have a compatible Smart Map configured in the iRobot app.
+- Available rooms depend on the robot's map information.
+- Room cleaning requires support for targeted cleaning commands.
+- Siri may occasionally interpret a room name as an Apple Home room rather than a cleaning command. In these cases, use the room switch directly in Apple Home.
 
-Additional models will be documented as they are tested and confirmed.
+## Multiple Roomba Support
 
-If your model works, please consider reporting it so it can be added to the
-compatibility list.
+Roomba Pro is designed to work with multiple robots associated with an iRobot account.
 
-## Development Status
+Each robot should have its own:
 
-Roomba Pro is under active development.
+- Cleaning control
+- Return to Dock control
+- Battery information
+- Available Smart Map room switches
+- Individual robot state
 
-Support for additional Roomba capabilities and models will continue to be added
-as they are tested.
+### Current Testing
 
-## Issues and Contributions
+Multi-robot operation has been successfully tested with two Roombas.
 
-Bug reports, testing results and contributions are welcome.
+Support for accounts containing three or more robots is intended but has not yet been fully validated.
 
-When opening an issue, include the Roomba model and relevant Homebridge logs
-whenever possible.
+Additional testing and user feedback are welcome.
 
-## Disclaimer
+## Requirements
 
-This project is an independent Homebridge plugin and is not affiliated with,
-endorsed by, or sponsored by iRobot Corporation or Apple Inc.
+- Homebridge
+- A Node.js version supported by your Homebridge installation
+- An iRobot account
+- A compatible iRobot Roomba
+- Internet access for iRobot cloud communication
+- Apple Home / HomeKit
 
-Roomba and iRobot are trademarks of iRobot Corporation.
+The plugin requires access to iRobot's cloud services to communicate with supported V4 robots.
 
-Apple, HomeKit and Apple Home are trademarks of Apple Inc.
+## Installation
 
-## License
+### Homebridge UI
 
-MIT
+Open the Homebridge web interface.
+
+Navigate to:
+
+**Plugins → Search**
+
+Search for:
+
+**homebridge-roomba-pro**
+
+Install the plugin and follow the configuration instructions.
+
+### Command Line
+
+```bash
+npm install -g homebridge-roomba-pro
+```
+
+Restart Homebridge after installation.
+
+## Configuration
+
+Open:
+
+**Homebridge → Plugins → Roomba Pro → Settings**
+
+Enter the required iRobot account information and save the configuration.
+
+Restart Homebridge after making changes.
+
+The plugin connects to the iRobot cloud platform and discovers compatible robot information.
+
+For robots that support Smart Map room discovery, available room accessories are created from the robot's map information.
+
+## How It Works
+
+Roomba Pro communicates with newer iRobot robots using the iRobot V4 cloud architecture.
+
+The plugin establishes an AWS IoT MQTT connection to receive robot information
