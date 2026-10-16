@@ -598,11 +598,10 @@ export class RoombaAccessory {
  */
     if (
       this.activeRoomId !== undefined &&
-  (
-    (this.lastCleaningState && !state.isCleaning) ||
-    state.isDocked ||
-    state.isCharging
-  )
+  this.lastCleaningState &&
+  !state.isCleaning &&
+  !state.isDocked &&
+  !state.isCharging
     ) {
 
       /**
