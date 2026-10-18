@@ -206,7 +206,7 @@ export class RoombaPlatform implements DynamicPlatformPlugin {
     
 
     this.log.info(
-      `iRobot MQTT client ID obtained: ${session.iotClientId}`,
+      'iRobot MQTT client ID obtained successfully.',
     );
 
     if (session.robots.length === 0) {
