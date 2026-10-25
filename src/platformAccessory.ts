@@ -29,7 +29,7 @@ export class RoombaAccessory {
     new Map<string, PlatformAccessory>(); 
   private readonly dockService: Service;
   private readonly batteryService: Service;
-  private activeRoomCleaningConfirmed = false;
+  private lastCleaningState = false;
   private activeRoomId?: string;
 
   constructor(
@@ -535,7 +535,6 @@ export class RoombaAccessory {
      */
       this.activeRoomId =
       roomId;
-      this.activeRoomCleaningConfirmed = false;
 
       try {
 
@@ -547,7 +546,6 @@ export class RoombaAccessory {
 
         this.activeRoomId =
         undefined;
-        this.activeRoomCleaningConfirmed = false;
 
         throw error;
       }
@@ -592,23 +590,30 @@ export class RoombaAccessory {
       state.isCleaning,
     );
     /**
-     * Confirm the selected room has actually started cleaning before
-     * considering completion. Ignore stale initial docked states.
-     */
-    if (this.activeRoomId !== undefined && state.isCleaning) {
-      this.activeRoomCleaningConfirmed = true;
-    }
-
+ * When a cleaning mission finishes, reset all
+ * mapped-room switches back to OFF.
+ *
+ * This only fires on a real cleaning -> idle transition,
+ * so the selected room remains ON while the mission runs.
+ */
     if (
       this.activeRoomId !== undefined &&
-      this.activeRoomCleaningConfirmed &&
-      !state.isCleaning &&
-      (state.isDocked || state.isCharging)
+  this.lastCleaningState &&
+  !state.isCleaning &&
+  !state.isDocked &&
+  !state.isCharging
     ) {
-      this.activeRoomId = undefined;
-      this.activeRoomCleaningConfirmed = false;
+
+      /**
+   * Clear this BEFORE updating HomeKit.
+   * If HomeKit sends an OFF callback in response,
+   * setRoomCleaning() will safely ignore it.
+   */
+      this.activeRoomId =
+    undefined;
 
       for (const service of this.roomServices.values()) {
+
         service.updateCharacteristic(
           this.platform.Characteristic.On,
           false,
@@ -619,6 +624,9 @@ export class RoombaAccessory {
         'Roomba room cleaning completed; room switches reset to OFF.',
       );
     }
+
+    this.lastCleaningState =
+  state.isCleaning;
 
     this.batteryService.updateCharacteristic(
       this.platform.Characteristic.BatteryLevel,
