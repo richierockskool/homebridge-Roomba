@@ -600,7 +600,8 @@ export class RoombaAccessory {
       this.activeRoomId !== undefined &&
   this.lastCleaningState &&
   !state.isCleaning &&
-  (state.isDocked || state.isCharging)
+  !state.isDocked &&
+  !state.isCharging
     ) {
 
       /**
